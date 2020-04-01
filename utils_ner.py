@@ -102,6 +102,7 @@ def convert_examples_to_features(
     """
 
     label_map = {label: i for i, label in enumerate(label_list)}
+    print(label_map)
 
     features = []
     for (ex_index, example) in enumerate(examples):
@@ -109,21 +110,26 @@ def convert_examples_to_features(
             logger.info("Writing example %d of %d", ex_index, len(examples))
 
         tokens = []
-        label_ids = []
+        class_label = ''
+        predicate = None
+        #label_ids = []
         # for arabic
         for word, label in zip(example.words, example.labels):
             word_tokens = tokenizer.tokenize(word)
             if len(word_tokens) == 0:
                 continue
             tokens.extend(word_tokens)
+            if label != 'O':
+                predicate = word_tokens
+                class_label = label
             # Use the real label id for the first token of the word, and padding ids for the remaining tokens
-            label_ids.extend([label_map[label]] + [pad_token_label_id] * (len(word_tokens) - 1))
+            # label_ids.extend([label_map[label]] + [pad_token_label_id] * (len(word_tokens) - 1))
 
         # Account for [CLS] and [SEP] with "- 2" and with "- 3" for RoBERTa.
         special_tokens_count = 3 if sep_token_extra else 2
         if len(tokens) > max_seq_length - special_tokens_count:
             tokens = tokens[: (max_seq_length - special_tokens_count)]
-            label_ids = label_ids[: (max_seq_length - special_tokens_count)]
+            # label_ids = label_ids[: (max_seq_length - special_tokens_count)]
 
         # The convention in BERT is:
         # (a) For sequence pairs:
@@ -206,8 +212,6 @@ def get_labels(path):
     if path:
         with open(path, "r") as f:
             labels = f.read().splitlines()
-        if "O" not in labels:
-            labels = ["O"] + labels
         return labels
     else:
-        return ["O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC"]
+        return []
