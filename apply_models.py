@@ -1750,7 +1750,8 @@ class BertForPredicateClassification(PreTrainedBertModel):
         self.fc2 = nn.Linear(self.config.hidden_size // 4, self.num_labels)
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, predicates, token_type_ids=None, attention_mask=None, labels=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, predicate=None):
+        # TODO add predicate vector in the arguments!!
         # in this predicate classification task, input_ids are the ids of the input tokens in the data,
         # token_type_ids are the segment ids of standard bert model inputs.
         # attention_mask ???
@@ -1774,11 +1775,15 @@ class BertForPredicateClassification(PreTrainedBertModel):
         # (B, T, H_w + H_b)
         hidden = (torch.autograd.Variable(torch.zeros(2, sequence_output.size(0), self.BiLSTM.hidden_size)).cuda(),
                   torch.autograd.Variable(torch.zeros(2, sequence_output.size(0), self.BiLSTM.hidden_size)).cuda())
-        sequence_output, hidden = self.BiLSTM(sequence_output, hidden)
+        _, hidden = self.BiLSTM(sequence_output, hidden)
         # (B, T, H)
-        # TODO do mean pooling and max pooling
-
-        hidden = self.dropout(hidden)
+        # TODO do mean pooling and max pooling on the bert sequence_output
+        # max_pool =
+        # use predicate vector for avg pooling
+        # avg_pool =
+        # hidden = torch.cat([hidden
+        print('#################################:', type(hidden))
+        # hidden = self.dropout(hidden)
         hidden = self.fc1(hidden)
         logits = self.fc2(hidden)
 
