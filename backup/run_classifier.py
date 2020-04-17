@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 class InputExample(object):
     """A single training/test example for simple sequence classification."""
 
-    def __init__(self, guid, text_a, text_b=None, label=None, predicate_vector=None):
+    def __init__(self, guid, text_a, text_b=None, label=None):
         """Constructs a InputExample.
 
         Args:
@@ -63,29 +63,24 @@ class InputExample(object):
             Only must be specified for sequence pair tasks.
             label: (Optional) string. The label of the example. This should be
             specified for train and dev examples, but not for test examples.
-            predicate: (Optional) string. The binary vector indicating the location
-            of the predicate word in a sentence.
         """
         self.guid = guid
         self.text_a = text_a
         self.text_b = text_b
         self.label = label
-        self.predicate_vector = predicate_vector
 
     def __str__(self):
-        return 'guid: %s\ttext_a: %s\ttext_b: %s\tlabel: %s\tpredicate: %s' % (self.guid, self.text_a, self.text_b,
-                                                                               self.label, self.predicate_vector)
+        return 'guid: %s\ttext_a: %s\ttext_b: %s\tlabel: %s' % (self.guid, self.text_a, self.text_b, self.label)
 
 
 class InputFeatures(object):
     """A single set of features of data."""
 
-    def __init__(self, input_ids, input_mask, segment_ids, label_id, predicate_vector):
+    def __init__(self, input_ids, input_mask, segment_ids, label_id):
         self.input_ids = input_ids
         self.input_mask = input_mask
         self.segment_ids = segment_ids
         self.label_id = label_id
-        self.predicate_vector = predicate_vector
 
 def warmup_linear(x, warmup=0.002):
     if x < warmup:
@@ -115,7 +110,6 @@ def read_examples_from_file(data_dir, mode):
         # labels = []
         label = None
         predicate = None
-        predicate_vector = []
         num_sentences = 0
         for line in f:
             line = line.strip()
@@ -123,20 +117,16 @@ def read_examples_from_file(data_dir, mode):
                 if words:
                     text_a = " ".join(words)
                     examples.append(InputExample(guid="{}-{}".format(mode, guid_index), text_a=text_a, text_b=predicate,
-                                                 label=label, predicate_vector=predicate_vector))
+                                                 label=label))
                     guid_index += 1
                     words = []
                     num_sentences += 1
-                    predicate_vector = []
             else:
                 splits = line.split(" ")
                 words.append(splits[0])
                 if splits[1] != 'O':
                     label = splits[1]
                     predicate = splits[0]
-                    predicate_vector.append(1)
-                else:
-                    predicate_vector.append(0)
 
                 # # Examples have label P to indicate the position of the predicate
                 # labels.append("O")
@@ -197,31 +187,11 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
 
     features = []
     for (ex_index, example) in enumerate(examples):
-        predicate_vector = example.predicate_vector
-        text_a_ls = example.text_a.split(' ')
-        assert len(predicate_vector) == len(text_a_ls), 'length of predicate vector is not the same as length of text_a'
-
-        predicate_vector_tokenized = []
-        tokens_temp = []
-        for i, word in enumerate(text_a_ls):
-            word_token = tokenizer.tokenize(word)
-            if predicate_vector[i] == 1:
-                predicate_vector_tokenized.extend([1] * len(word_token))
-            else:
-                predicate_vector_tokenized.extend([0] * len(word_token))
-            tokens_temp.extend(word_token)
-
-        # tokenize the whole sentence
         tokens_a = tokenizer.tokenize(example.text_a)
-
-        assert tokens_temp == tokens_a, 'Tokenization is incorrectly done.'
 
         tokens_b = None
         if example.text_b:
-            # tokenize the whole sentence
             tokens_b = tokenizer.tokenize(example.text_b)
-
-
             # Modifies `tokens_a` and `tokens_b` in place so that the total
             # length is less than the specified length.
             # Account for [CLS], [SEP], [SEP] with "- 3"
@@ -251,12 +221,10 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         # the entire model is fine-tuned.
         tokens = ["[CLS]"] + tokens_a + ["[SEP]"]
         segment_ids = [0] * len(tokens)
-        predicate_vector_tokenized = [0] + predicate_vector_tokenized + [0]
 
         if tokens_b:
             tokens += tokens_b + ["[SEP]"]
             segment_ids += [1] * (len(tokens_b) + 1)
-            predicate_vector_tokenized.extend([0] * (len(tokens_b) + 1))
 
         # print('tokens_a: ', tokens_a)
         # print('tokens_b: ', tokens_b)
@@ -266,24 +234,15 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         # tokens are attended to.
         input_mask = [1] * len(input_ids)
 
-        # pad the predicate vector to match the length of input_ids
-        predicate_vector_tokenized += [0] * (len(input_ids) - len(predicate_vector_tokenized))
-
         # Zero-pad up to the sequence length.
         padding = [0] * (max_seq_length - len(input_ids))
         input_ids += padding
         input_mask += padding
         segment_ids += padding
-        predicate_vector_tokenized += padding
 
         assert len(input_ids) == max_seq_length
         assert len(input_mask) == max_seq_length
         assert len(segment_ids) == max_seq_length
-        assert len(predicate_vector_tokenized) == max_seq_length, "left: %s\tright: %s" % (len(predicate_vector_tokenized), max_seq_length)
-        # if predicate_vector_tokenized.count(1) > 1:
-        #     print('tokens:', tokens)
-        #     print('predicate vector: ', predicate_vector_tokenized)
-
 
         label_id = label_map[example.label]
         if ex_index < 5:
@@ -296,14 +255,12 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
             logger.info(
                 "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
             logger.info("label: %s (id = %d)" % (example.label, label_id))
-            logger.info("predicate vector: %s" % " ".join([str(x) for x in predicate_vector_tokenized]))
 
         features.append(
             InputFeatures(input_ids=input_ids,
                           input_mask=input_mask,
                           segment_ids=segment_ids,
-                          label_id=label_id,
-                          predicate_vector=predicate_vector_tokenized))
+                          label_id=label_id))
     return features
 
 
@@ -544,24 +501,6 @@ def main():
     global_step = 0
     nb_tr_steps = 0
     tr_loss = 0
-
-    eval_examples = processor.get_dev_examples(args.data_dir)
-    eval_features = convert_examples_to_features(
-        eval_examples, label_list, args.max_seq_length, tokenizer)
-    logger.info("***** Running evaluation *****")
-    logger.info("  Num examples = %d", len(eval_examples))
-    logger.info("  Batch size = %d", args.eval_batch_size)
-    all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
-    all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
-    all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
-    all_label_ids = torch.tensor([f.label_id for f in eval_features], dtype=torch.long)
-    all_predicate_vectors = torch.tensor([f.predicate_vector for f in eval_features], dtype=torch.long)
-    eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, all_predicate_vectors)
-    # Run prediction for full data
-    eval_sampler = SequentialSampler(eval_data)
-    eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.eval_batch_size)
-
-
     if args.do_train:
         train_features = convert_examples_to_features(
             train_examples, label_list, args.max_seq_length, tokenizer)
@@ -574,16 +513,16 @@ def main():
         all_input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long)
         all_segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long)
         all_label_ids = torch.tensor([f.label_id for f in train_features], dtype=torch.long)
-        all_predicate_vectors = torch.tensor([f.predicate_vector for f in train_features], dtype=torch.long)
-        train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, all_predicate_vectors)
+        train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
         if args.local_rank == -1:
             train_sampler = RandomSampler(train_data)
         else:
             train_sampler = DistributedSampler(train_data)
         train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=args.train_batch_size)
 
-        for epc in trange(int(args.num_train_epochs), desc="Epoch"):
-            model.train()
+        model.train()
+        print('ready to train..')
+        for _ in trange(int(args.num_train_epochs), desc="Epoch"):
             tr_loss = 0
             nb_tr_examples, nb_tr_steps = 0, 0
 
@@ -592,10 +531,10 @@ def main():
 
             for step, batch in enumerate(tqdm(train_dataloader, desc="Iteration")):
                 batch = tuple(t.to(device) for t in batch)
-                input_ids, input_mask, segment_ids, label_ids, predicate_vectors = batch
+                input_ids, input_mask, segment_ids, label_ids = batch
                 # print(input_ids, input_mask, segment_ids, label_ids)
 
-                loss, logits = model(input_ids, segment_ids, input_mask, label_ids, predicate_vectors)
+                loss, logits = model(input_ids, segment_ids, input_mask, label_ids)
                 if n_gpu > 1:
                     loss = loss.mean()  # mean() to average on multi-gpu.
                 if args.gradient_accumulation_steps > 1:
@@ -634,63 +573,6 @@ def main():
             for key in sorted(result.keys()):
                 logger.info("  %s = %s", key, str(result[key]))
 
-            if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-
-                model.eval()
-                eval_loss, eval_accuracy = 0, 0
-                nb_eval_steps, nb_eval_examples = 0, 0
-
-                y_true = []
-                y_pred = []
-
-                for input_ids, input_mask, segment_ids, label_ids, predicate_vectors in tqdm(eval_dataloader, desc="Evaluating"):
-                    input_ids = input_ids.to(device)
-                    input_mask = input_mask.to(device)
-                    segment_ids = segment_ids.to(device)
-                    label_ids = label_ids.to(device)
-                    predicate_vectors = predicate_vectors.to(device)
-
-                    with torch.no_grad():
-                        tmp_eval_loss, _ = model(input_ids, segment_ids, input_mask, label_ids, predicate_vectors)
-                        logits = model(input_ids, segment_ids, input_mask, predicate_vector=predicate_vectors)
-
-                    logits = logits.detach().cpu().numpy()
-                    label_ids = label_ids.to('cpu').numpy()
-
-                    y_pred.extend(np.argmax(logits, axis=1).tolist())
-                    y_true.extend(label_ids.tolist())
-
-                    tmp_eval_accuracy = accuracy(logits, label_ids)
-                    eval_loss += tmp_eval_loss.mean().item()
-                    eval_accuracy += tmp_eval_accuracy
-
-                    nb_eval_examples += input_ids.size(0)
-                    nb_eval_steps += 1
-
-                another_acc = metrics.accuracy_score(y_true, y_pred)
-                f1_score = metrics.f1_score(y_true, y_pred, average='macro')
-
-                eval_loss = eval_loss / nb_eval_steps
-                eval_accuracy = eval_accuracy / nb_eval_examples
-                loss = tr_loss / nb_tr_steps if args.do_train else None
-                result = {'eval_loss': eval_loss,
-                          'eval_accuracy': eval_accuracy,
-                          'global_step': global_step,
-                          'loss': loss,
-                          'another_acc:': another_acc,
-                          'f1 score:': f1_score}
-
-                logger.info("***** Eval results *****")
-                for key in sorted(result.keys()):
-                    logger.info("  %s = %s", key, str(result[key]))
-
-            # save model periodically
-            # if (epc+1) % 10 == 0:
-            #     model_to_save = model.module if hasattr(model, 'module') else model  # Only save the model it-self
-            #     output_model_file = os.path.join(args.output_dir, "pytorch_model_" + str(epc+1) + ".bin")
-            #     if args.do_train:
-            #         torch.save(model_to_save.state_dict(), output_model_file)
-
     # Save a trained model
     model_to_save = model.module if hasattr(model, 'module') else model  # Only save the model it-self
     output_model_file = os.path.join(args.output_dir, "pytorch_model.bin")
@@ -714,8 +596,7 @@ def main():
         all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
         all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
         all_label_ids = torch.tensor([f.label_id for f in eval_features], dtype=torch.long)
-        all_predicate_vectors = torch.tensor([f.predicate_vector for f in eval_features], dtype=torch.long)
-        eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, all_predicate_vectors)
+        eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
         # Run prediction for full data
         eval_sampler = SequentialSampler(eval_data)
         eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.eval_batch_size)
@@ -727,16 +608,15 @@ def main():
         y_true = []
         y_pred = []
 
-        for input_ids, input_mask, segment_ids, label_ids, predicate_vectors in tqdm(eval_dataloader, desc="Evaluating"):
+        for input_ids, input_mask, segment_ids, label_ids in tqdm(eval_dataloader, desc="Evaluating"):
             input_ids = input_ids.to(device)
             input_mask = input_mask.to(device)
             segment_ids = segment_ids.to(device)
             label_ids = label_ids.to(device)
-            predicate_vectors = predicate_vectors.to(device)
 
             with torch.no_grad():
-                tmp_eval_loss, _ = model(input_ids, segment_ids, input_mask, label_ids, predicate_vectors)
-                logits = model(input_ids, segment_ids, input_mask, predicate_vector=predicate_vectors)
+                tmp_eval_loss, _ = model(input_ids, segment_ids, input_mask, label_ids)
+                logits = model(input_ids, segment_ids, input_mask)
 
             logits = logits.detach().cpu().numpy()
             label_ids = label_ids.to('cpu').numpy()
