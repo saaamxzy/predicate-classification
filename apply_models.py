@@ -1843,17 +1843,24 @@ class BertForPredicateClassification(PreTrainedBertModel):
         max_pool_predicate, _ = torch.max(bert_emb_pred, dim=1)
 
         # need to count how many non zero vectors in each batch
-        num_of_ones = torch.sum(predicate_vector, dim=0) # sum over batch
-        print('shape of num_of_ones:', num_of_ones.shape)
+        num_of_ones = torch.sum(predicate_vector, dim=1) # sum over batch
+        # print('shape of num_of_ones:', num_of_ones.shape)
+        # print(num_of_ones)
 
+        mean_pool_predicate = bert_emb_pred_summed / num_of_ones.view(-1, 1)
+        # print('mean_pool_predicate shape', mean_pool_predicate.shape)
+        # print(mean_pool_predicate)
         # print('indices:', indices)
         # print('indices shape', indices.shape)
         # print(bert_emb[indices])
         # print('bert_emb_pred shape:', bert_emb[indices].shape)
         #print()
 
-        last_hidden = torch.cat((last_hidden, max_pool, mean_pool), 1)
+        # use max and mean pool over all words embedding
+        # last_hidden = torch.cat((last_hidden, max_pool, mean_pool), 1)
 
+        # use max and mean pool over predicate embedding only
+        last_hidden = torch.cat((last_hidden, max_pool_predicate, mean_pool_predicate), 1)
 
         # print('l0 shape', last_hidden.shape)
         # hidden = self.dropout(hidden)
