@@ -1735,7 +1735,7 @@ class BertForPredicateClassification(PreTrainedBertModel):
         self.binary_emb_dim = 50
         self.bert = BertModel(config)
 
-        # use binary embeddin
+        # use binary embedding
         self.binary_embeddings = nn.Embedding(2, self.binary_emb_dim)
         self.BiLSTM = nn.LSTM(input_size=config.hidden_size + self.binary_emb_dim,
                                     hidden_size=config.hidden_size // 2,
@@ -1747,15 +1747,12 @@ class BertForPredicateClassification(PreTrainedBertModel):
                                     bidirectional=True, batch_first=True)
 
         self.mlp = nn.Sequential(
-            nn.Dropout(0.5),
-            nn.Linear(config.hidden_size*5, 4096),
+            # nn.Dropout(0.5),
+            nn.Linear(config.hidden_size*5, 300),
             nn.Tanh(),
-            nn.Linear(4096, self.num_labels)
+            nn.Linear(300, self.num_labels)
         )
-        # self.fc1 = nn.Linear(config.hidden_size * 3, 4096)
-        # #self.dropout = nn.Dropout(0.5)
-        # self.relu = nn.ReLU()
-        # self.fc2 = nn.Linear(4096, self.num_labels)
+
         self.apply(self.init_bert_weights)
 
         # # Not using binary vectors
@@ -1786,16 +1783,7 @@ class BertForPredicateClassification(PreTrainedBertModel):
         # print('bert emb shape:', bert_emb.shape)
         # B for batch, T for sequence length. H for hidden
         # (B, T, H_w)
-        # extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-        # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
-        # masked positions, this operation will create a tensor which is 0.0 for
-        # positions we want to attend and -10000.0 for masked positions.
-        # Since we are adding it to the raw scores before the softmax, this is
-        # effectively the same as removing these entirely.
-        # extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
-        # extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
 
-        #sequence_output = self.hidden_ESRL(sequence_output, extended_attention_mask)
         # TODO try using binary features by passing a binary vector indicating the position of the predicate tokens
         binary_features = self.binary_embeddings(predicate_vector)
         # (B, T, H_b)
@@ -1844,7 +1832,7 @@ class BertForPredicateClassification(PreTrainedBertModel):
         # use max and mean pool over all words embedding
         # last_hidden = torch.cat((last_hidden, max_pool, mean_pool), 1)
 
-        # use max and mean pool over predicate embedding only
+        # use max and mean pool over predicate embedding + all words
         last_hidden = torch.cat((last_hidden, max_pool_predicate, mean_pool_predicate, max_pool, mean_pool), 1)
 
         # print('l0 shape', last_hidden.shape)

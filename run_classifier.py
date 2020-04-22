@@ -191,9 +191,9 @@ class PcProcessor(DataProcessor):
 
     def get_labels(self):
         """See base class."""
-        # return get_labels_from_file('./data/predicate-classification/labels.txt')
+        return get_labels_from_file('./data/predicate-classification/labels.txt')
         # return get_labels_from_file('./data/second_quad/labels.txt')
-        return get_labels_from_file('./data/first_quad/labels.txt')
+        # return get_labels_from_file('./data/first_quad/labels.txt')
 
 
 def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer):
