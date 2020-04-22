@@ -15,7 +15,7 @@ pc_test_path = pc_dir + 'test.txt'
 pc_labels_path = pc_dir + 'labels.txt'
 
 
-def write_pc_data(mode:str):
+def write_pc_data(mode: str):
     print('processing ' + mode + ' data...')
     edc_file = edc_train_path
     pc_file = pc_train_path

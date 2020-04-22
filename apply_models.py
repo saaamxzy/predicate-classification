@@ -1741,9 +1741,21 @@ class BertForPredicateClassification(PreTrainedBertModel):
                                     hidden_size=config.hidden_size // 2,
                                     bidirectional=True, batch_first=True)
 
-        self.fc1 = nn.Linear(config.hidden_size * 3, 4096)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(4096, self.num_labels)
+        self.BiLSTM2 = nn.LSTM(input_size=config.hidden_size,
+                                    hidden_size=config.hidden_size // 2,
+                                    num_layers=1,
+                                    bidirectional=True, batch_first=True)
+
+        self.mlp = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(config.hidden_size*5, 4096),
+            nn.Tanh(),
+            nn.Linear(4096, self.num_labels)
+        )
+        # self.fc1 = nn.Linear(config.hidden_size * 3, 4096)
+        # #self.dropout = nn.Dropout(0.5)
+        # self.relu = nn.ReLU()
+        # self.fc2 = nn.Linear(4096, self.num_labels)
         self.apply(self.init_bert_weights)
 
         # # Not using binary vectors
@@ -1795,77 +1807,50 @@ class BertForPredicateClassification(PreTrainedBertModel):
                   torch.autograd.Variable(torch.zeros(2, bert_emb.size(0), self.BiLSTM.hidden_size)).cuda())
         self.BiLSTM.flatten_parameters()
         sequence_output, hidden = self.BiLSTM(sequence_output, hidden)
-        # self.BiLSTM.flatten_parameters()
-
         sequence_output = sequence_output.contiguous()
+        self.BiLSTM2.flatten_parameters()
+        sequence_output, hidden = self.BiLSTM2(sequence_output, hidden)
+        sequence_output = sequence_output.contiguous()
+        # print('seqout shape:', sequence_output.shape)
+        # print('hidden shape:', hidden[0].shape)
+
         # self.BiLSTM2.flatten_parameters()
         # sequence_output, hidden = self.BiLSTM2(sequence_output, hidden)
         # self.BiLSTM2.flatten_parameters()
-
-        # sequence_output = sequence_output.contiguous()
-
-        # sequence_output, hidden = self.BiLSTM2(sequence_output, hidden)
-
-        # print('seq out shape:', sequence_output.shape)
-        # print('seq out:', sequence_output)
-        # print('hidden shape: ', hidden.shape)
-        # print('hidden:', hidden)
 
         B = input_ids.shape[0]
 
         dir1 = hidden[0][0, :, :].squeeze()
         dir2 = hidden[0][1, :, :].squeeze()
         last_hidden = torch.cat((dir1, dir2), dim=1)
-
-
-        # last_hidden = hidden[0].view(B, -1)
-        # print('shape of input: ', input_ids.shape)
-        # print('shape of seq out: ', sequence_output.shape)
-        # print('shape of hidden[0]: ', hidden[0].shape)
-        # print('shape of last_hidden: ', last_hidden.shape)
         # (B, T, H)
 
         # mean pooling and max pooling on the bert sequence_output
         max_pool, _ = torch.max(bert_emb, dim=1)
         mean_pool = torch.mean(bert_emb, dim=1)
 
-
-        # print('max pool shape:', max_pool.shape)
-
         # use predicate vector for avg and max pooling
         indices = (predicate_vector == 0)
         bert_emb_pred = bert_emb
         bert_emb_pred[indices] = 0.0
         bert_emb_pred_summed = torch.sum(bert_emb_pred, dim=1) # sum over seq length
-        # print('bert_emb_pred_summed shape', bert_emb_pred_summed.shape)
-        # print('bert_emb_pred summed on dim 1', bert_emb_pred_summed)
 
         max_pool_predicate, _ = torch.max(bert_emb_pred, dim=1)
 
         # need to count how many non zero vectors in each batch
         num_of_ones = torch.sum(predicate_vector, dim=1) # sum over batch
-        # print('shape of num_of_ones:', num_of_ones.shape)
-        # print(num_of_ones)
-
         mean_pool_predicate = bert_emb_pred_summed / num_of_ones.view(-1, 1)
-        # print('mean_pool_predicate shape', mean_pool_predicate.shape)
-        # print(mean_pool_predicate)
-        # print('indices:', indices)
-        # print('indices shape', indices.shape)
-        # print(bert_emb[indices])
-        # print('bert_emb_pred shape:', bert_emb[indices].shape)
-        #print()
 
         # use max and mean pool over all words embedding
         # last_hidden = torch.cat((last_hidden, max_pool, mean_pool), 1)
 
         # use max and mean pool over predicate embedding only
-        last_hidden = torch.cat((last_hidden, max_pool_predicate, mean_pool_predicate), 1)
+        last_hidden = torch.cat((last_hidden, max_pool_predicate, mean_pool_predicate, max_pool, mean_pool), 1)
 
         # print('l0 shape', last_hidden.shape)
         # hidden = self.dropout(hidden)
-        sequence_output = self.relu(self.fc1(last_hidden))
-        logits = self.fc2(sequence_output)
+        # sequence_output = self.relu(self.fc1(last_hidden))
+        logits = self.mlp(last_hidden)
         if labels is not None:
             loss_fct = CrossEntropyLoss()
             loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))

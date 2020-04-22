@@ -76,6 +76,10 @@ class InputExample(object):
         return 'guid: %s\ttext_a: %s\ttext_b: %s\tlabel: %s\tpredicate: %s' % (self.guid, self.text_a, self.text_b,
                                                                                self.label, self.predicate_vector)
 
+    def get_debug_string(self):
+        return 'guid: %s\ttext_a: %s\ttext_b: %s\tlabel: %s' % (self.guid, self.text_a, self.text_b,
+                                                                               self.label)
+
 
 class InputFeatures(object):
     """A single set of features of data."""
@@ -187,13 +191,16 @@ class PcProcessor(DataProcessor):
 
     def get_labels(self):
         """See base class."""
-        return get_labels_from_file('./data/predicate-classification/labels.txt')
+        # return get_labels_from_file('./data/predicate-classification/labels.txt')
+        # return get_labels_from_file('./data/second_quad/labels.txt')
+        return get_labels_from_file('./data/first_quad/labels.txt')
 
 
 def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer):
     """Loads a data file into a list of `InputBatch`s."""
 
     label_map = {label: i for i, label in enumerate(label_list)}
+    print(label_map)
 
     features = []
     for (ex_index, example) in enumerate(examples):
@@ -471,6 +478,8 @@ def main():
 
     tokenizer = BertTokenizer.from_pretrained(args.bert_model, do_lower_case=args.do_lower_case)
 
+    ## Evaluation comment the block down below
+
     train_examples = None
     num_train_steps = None
     if args.do_train:
@@ -697,7 +706,10 @@ def main():
     if args.do_train:
         torch.save(model_to_save.state_dict(), output_model_file)
 
+    ## Until here
+
     # Load a trained model that you have fine-tuned
+    output_model_file = os.path.join(args.output_dir, "pytorch_model.bin")
     model_state_dict = torch.load(output_model_file)
     model = BertForPredicateClassification.from_pretrained(args.bert_model, state_dict=model_state_dict,
                                                           num_labels=num_labels)
@@ -756,11 +768,11 @@ def main():
 
         eval_loss = eval_loss / nb_eval_steps
         eval_accuracy = eval_accuracy / nb_eval_examples
-        loss = tr_loss / nb_tr_steps if args.do_train else None
+        # loss = tr_loss / nb_tr_steps if args.do_train else None
         result = {'eval_loss': eval_loss,
                   'eval_accuracy': eval_accuracy,
-                  'global_step': global_step,
-                  'loss': loss,
+                  # 'global_step': global_step,
+                  # 'loss': loss,
                   'another_acc:': another_acc,
                   'f1 score:': f1_score}
 
@@ -771,6 +783,74 @@ def main():
                 logger.info("  %s = %s", key, str(result[key]))
                 writer.write("%s = %s\n" % (key, str(result[key])))
 
+        label_map = {i: label for i, label in enumerate(label_list)}
+        y_true_word = [label_map[lab] for lab in y_true]
+        y_pred_word = [label_map[lab] for lab in y_pred]
+
+        wrong_pred_idx = np.array(y_true) != np.array(y_pred)
+        rs = []
+        for i, wrong in enumerate(wrong_pred_idx):
+            if wrong:
+                rs.append(eval_examples[i])
+        print('wrong predictions total number: ', len(rs))
+        wrong_file = open('wrong_predictions.txt', 'w')
+
+        for i, entry in enumerate(rs):
+            assert y_true_word[int(entry.guid.split('-')[-1])-1] == entry.label, \
+                '#%s# len(%d) is not equal to #%s# len(%d)' % (y_true_word[int(entry.guid.split('-')[-1])],
+                                                               len(y_true_word[int(entry.guid.split('-')[-1])]),
+                                                               entry.label,
+                                                               len(entry.label))
+            wrong_file.write(entry.get_debug_string())
+            wrong_file.write('\tpredicted: %s' % (y_pred_word[i]))
+            wrong_file.write('\n')
+
+        wrong_file.close()
+
+
+
+        conf_mat = metrics.confusion_matrix(y_true_word, y_pred_word, labels=label_list)
+        # print_dict(label_map)
+        print_cm(conf_mat, label_list)
+
+def print_dict(label_dict):
+    total = sum(label_dict.keys())
+
+    for label, count in sorted(label_dict.items(), key=lambda x:x[0]):
+        print('%s : %d, percentage: %f' % (label, count, count / float(total)))
+
+
+def print_cm(cm, labels, hide_zeroes=False, hide_diagonal=False, hide_threshold=None):
+    """pretty print for confusion matrixes"""
+    columnwidth = max([len(x) for x in labels] + [5])  # 5 is value length
+    empty_cell = " " * columnwidth
+
+    # Begin CHANGES
+    fst_empty_cell = (columnwidth - 3) // 2 * " " + "t/p" + (columnwidth - 3) // 2 * " "
+
+    if len(fst_empty_cell) < len(empty_cell):
+        fst_empty_cell = " " * (len(empty_cell) - len(fst_empty_cell)) + fst_empty_cell
+    # Print header
+    print("    " + fst_empty_cell, end=" ")
+    # End CHANGES
+
+    for label in labels:
+        print("%{0}s".format(columnwidth) % label, end=" ")
+
+    print()
+    # Print rows
+    for i, label1 in enumerate(labels):
+        print("    %{0}s".format(columnwidth) % label1, end=" ")
+        for j in range(len(labels)):
+            cell = "%{0}.1f".format(columnwidth) % cm[i, j]
+            if hide_zeroes:
+                cell = cell if float(cm[i, j]) != 0 else empty_cell
+            if hide_diagonal:
+                cell = cell if i != j else empty_cell
+            if hide_threshold:
+                cell = cell if cm[i, j] > hide_threshold else empty_cell
+            print(cell, end=" ")
+        print()
 
 if __name__ == "__main__":
     main()
