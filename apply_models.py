@@ -1748,9 +1748,9 @@ class BertForPredicateClassification(PreTrainedBertModel):
 
         self.mlp = nn.Sequential(
             # nn.Dropout(0.5),
-            nn.Linear(config.hidden_size*5, 300),
-            nn.Tanh(),
-            nn.Linear(300, self.num_labels)
+            nn.Linear(config.hidden_size*5, 4096),
+            nn.ReLU(),
+            nn.Linear(4096, self.num_labels)
         )
 
         self.apply(self.init_bert_weights)
@@ -1784,7 +1784,6 @@ class BertForPredicateClassification(PreTrainedBertModel):
         # B for batch, T for sequence length. H for hidden
         # (B, T, H_w)
 
-        # TODO try using binary features by passing a binary vector indicating the position of the predicate tokens
         binary_features = self.binary_embeddings(predicate_vector)
         # (B, T, H_b)
         sequence_output = torch.cat([bert_emb, binary_features], 2)
@@ -1806,11 +1805,14 @@ class BertForPredicateClassification(PreTrainedBertModel):
         # sequence_output, hidden = self.BiLSTM2(sequence_output, hidden)
         # self.BiLSTM2.flatten_parameters()
 
-        B = input_ids.shape[0]
+        # B = input_ids.shape[0]
+
+        # temp_seq = sequence_output.view(B, -1)
 
         dir1 = hidden[0][0, :, :].squeeze()
         dir2 = hidden[0][1, :, :].squeeze()
-        last_hidden = torch.cat((dir1, dir2), dim=1)
+        # print('dir1 shape: ', dir1.shape, ', dir2 shape: ', dir2.shape)
+        last_hidden = torch.cat((dir1, dir2), dim=-1)
         # (B, T, H)
 
         # mean pooling and max pooling on the bert sequence_output
@@ -1826,14 +1828,15 @@ class BertForPredicateClassification(PreTrainedBertModel):
         max_pool_predicate, _ = torch.max(bert_emb_pred, dim=1)
 
         # need to count how many non zero vectors in each batch
-        num_of_ones = torch.sum(predicate_vector, dim=1) # sum over batch
+        num_of_ones = torch.sum(predicate_vector, dim=1)  # sum over batch
         mean_pool_predicate = bert_emb_pred_summed / num_of_ones.view(-1, 1)
 
         # use max and mean pool over all words embedding
         # last_hidden = torch.cat((last_hidden, max_pool, mean_pool), 1)
 
         # use max and mean pool over predicate embedding + all words
-        last_hidden = torch.cat((last_hidden, max_pool_predicate, mean_pool_predicate, max_pool, mean_pool), 1)
+        # last_hidden =  torch.cat((temp_seq, max_pool_predicate, mean_pool_predicate, max_pool, mean_pool), 1)
+        last_hidden = torch.cat((last_hidden, max_pool_predicate, mean_pool_predicate, max_pool, mean_pool), -1)
 
         # print('l0 shape', last_hidden.shape)
         # hidden = self.dropout(hidden)
