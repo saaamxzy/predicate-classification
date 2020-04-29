@@ -112,7 +112,7 @@ def convert_examples_to_features(
         tokens = []
         class_label = ''
         predicate = None
-        #label_ids = []
+        label_ids = []
         # for arabic
         for word, label in zip(example.words, example.labels):
             word_tokens = tokenizer.tokenize(word)
