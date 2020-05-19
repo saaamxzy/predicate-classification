@@ -191,7 +191,7 @@ def convert_examples_to_features(
         assert len(input_ids) == max_seq_length
         assert len(input_mask) == max_seq_length
         assert len(segment_ids) == max_seq_length
-        assert len(label_ids) == max_seq_length
+        assert len(label_ids) == max_seq_length, '%d is not equal to %d' % (len(label_ids), max_seq_length)
 
         if ex_index < 5:
             logger.info("*** Example ***")

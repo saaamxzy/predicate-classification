@@ -24,7 +24,7 @@ import random
 
 import numpy as np
 import torch
-from seqeval.metrics import f1_score, precision_score, recall_score
+from seqeval.metrics import f1_score, precision_score, recall_score, accuracy_score
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
@@ -216,8 +216,8 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
                 else:
                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
-                scheduler.step()  # Update learning rate schedule
                 optimizer.step()
+                scheduler.step()  # Update learning rate schedule
                 model.zero_grad()
                 global_step += 1
 
@@ -660,8 +660,9 @@ def main():
     if args.do_predict and args.local_rank in [-1, 0]:
         tokenizer = tokenizer_class.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case)
         model = model_class.from_pretrained(args.output_dir)
+        print(args.output_dir)
         model.to(args.device)
-        result, predictions = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="test")
+        result, predictions = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="test_arab")
         # Save results
         output_test_results_file = os.path.join(args.output_dir, "test_results.txt")
         with open(output_test_results_file, "w") as writer:
@@ -670,7 +671,8 @@ def main():
         # Save predictions
         output_test_predictions_file = os.path.join(args.output_dir, "test_predictions.txt")
         with open(output_test_predictions_file, "w") as writer:
-            with open(os.path.join(args.data_dir, "edc_input.txt"), "r") as f:
+            with open(os.path.join(args.data_dir, "test_arab.txt"), "r") as f:
+            # with open("data/event-detection/arabic/test.txt", "r", encoding='utf-8') as f:
                 example_id = 0
                 for line in f:
                     if line.startswith("-DOCSTART-") or line == "" or line == "\n":

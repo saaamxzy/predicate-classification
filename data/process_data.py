@@ -19,6 +19,7 @@ def write_pc_data(mode: str):
     print('processing ' + mode + ' data...')
     edc_file = edc_train_path
     pc_file = pc_train_path
+    no_label = False
     if mode == 'train':
         edc_file = edc_train_path
         pc_file = pc_train_path
@@ -29,7 +30,9 @@ def write_pc_data(mode: str):
         edc_file = edc_test_path
         pc_file = pc_test_path
     else:
-        print('Error: mode is not supported: must be train, dev or test.')
+        edc_file = 'models/edc-mbert-cased-combined/test_predictions.txt'
+        pc_file = 'data/test_predictions.txt'
+        no_label = True
 
     in_file = open(edc_file, 'r')
 
@@ -50,7 +53,8 @@ def write_pc_data(mode: str):
                 new_tags = ['O' for _ in range(len(tags))]
                 if t != 'O':
                     # we found a predicate, need to create a stand-alone data point for it
-                    t = t[2:]  # remove the 'B-' or 'I-'
+                    if not no_label:
+                        t = t[2:]  # remove the 'B-' or 'I-'
                     new_tags[i] = t
                     examples.append(words)
                     labels.append(new_tags)
@@ -74,16 +78,17 @@ def write_pc_data(mode: str):
         label = labels[i]
         n = len(example)
         for j in range(n):
-            out_file.write(example[j]+ ' ' + label[j] + '\n')
+            out_file.write(example[j] + ' ' + label[j] + '\n')
         out_file.write('\n')
 
     out_file.close()
 
 
 def main():
-    write_pc_data('train')
-    write_pc_data('dev')
-    write_pc_data('test')
+    # write_pc_data('train')
+    # write_pc_data('dev')
+    # write_pc_data('test')
+    write_pc_data('else')
 
 
 if __name__ == '__main__':

@@ -1747,7 +1747,7 @@ class BertForPredicateClassification(PreTrainedBertModel):
                                     bidirectional=True, batch_first=True)
 
         self.mlp = nn.Sequential(
-            # nn.Dropout(0.5),
+            nn.Dropout(0.5),
             nn.Linear(config.hidden_size*5, 4096),
             nn.ReLU(),
             nn.Linear(4096, self.num_labels)
@@ -1775,7 +1775,6 @@ class BertForPredicateClassification(PreTrainedBertModel):
         # self.apply(self.init_bert_weights)
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, predicate_vector=None):
-        # TODO try adding predicate vector in the arguments instead of passing the predicate word as segment 1
         # in this predicate classification task, input_ids are the ids of the input tokens in the data,
         # token_type_ids are the segment ids of standard bert model inputs.
         # attention_mask ???
@@ -1836,6 +1835,8 @@ class BertForPredicateClassification(PreTrainedBertModel):
 
         # use max and mean pool over predicate embedding + all words
         # last_hidden =  torch.cat((temp_seq, max_pool_predicate, mean_pool_predicate, max_pool, mean_pool), 1)
+
+        last_hidden = last_hidden.view(input_ids.shape[0], -1)
         last_hidden = torch.cat((last_hidden, max_pool_predicate, mean_pool_predicate, max_pool, mean_pool), -1)
 
         # print('l0 shape', last_hidden.shape)
