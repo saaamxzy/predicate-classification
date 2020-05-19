@@ -424,6 +424,12 @@ def main():
 
     # Other parameters
     parser.add_argument(
+        "--test_file",
+        default='test',
+        type=str,
+        help="Name of the test file(excluding '.txt') under args.output_dir. Default value is test.",
+    )
+    parser.add_argument(
         "--labels",
         default="",
         type=str,
@@ -662,16 +668,16 @@ def main():
         model = model_class.from_pretrained(args.output_dir)
         print(args.output_dir)
         model.to(args.device)
-        result, predictions = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="test_arab")
+        result, predictions = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode=args.test_file)
         # Save results
-        output_test_results_file = os.path.join(args.output_dir, "test_results.txt")
+        output_test_results_file = os.path.join(args.output_dir, "detector_test_results.txt")
         with open(output_test_results_file, "w") as writer:
             for key in sorted(result.keys()):
                 writer.write("{} = {}\n".format(key, str(result[key])))
         # Save predictions
-        output_test_predictions_file = os.path.join(args.output_dir, "test_predictions.txt")
+        output_test_predictions_file = os.path.join(args.output_dir, "detector_test_predictions.txt")
         with open(output_test_predictions_file, "w") as writer:
-            with open(os.path.join(args.data_dir, "test_arab.txt"), "r") as f:
+            with open(os.path.join(args.data_dir, args.test_file), "r") as f:
             # with open("data/event-detection/arabic/test.txt", "r", encoding='utf-8') as f:
                 example_id = 0
                 for line in f:
