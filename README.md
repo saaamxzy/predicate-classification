@@ -52,6 +52,11 @@ location of the predicate word, and the label is one of the 12 classes.
 In this model we did not use the location indicator of the predicate. The 
 architecture is similar to the one below:
 
+|Metric|English Dev|English Test|Arabic Test|
+|---|---|---|---|
+|Precision|84.6|86.9|86.3|
+|Recall|84.4|83.7|81.8|
+|F1|84.5|85.3|84.0|
 
 ### Adding Predicate Position Indicator
 
@@ -62,8 +67,8 @@ Accuracy for three models
 |Model|English Dev|English Test|Arabic Test|
 |---|---|---|---|
 |A|69.1|69.1|55.3|
-|B|84.4|83.7|81.8|
-|C|84.5|85.3|84.0|
+|B|xx.x|xx.x|xx.x|
+|C|xx.x|xx.x|xx.x|
 
 
 ## Code

@@ -1,13 +1,13 @@
 import os
 
-edc_dir = 'event-detection-classification/'
+edc_dir = 'data/event-detection-classification/'
 
 edc_train_path = edc_dir + 'train.txt'
 edc_dev_path = edc_dir + 'dev.txt'
 edc_test_path = edc_dir + 'test.txt'
 edc_labels_path = edc_dir + 'labels.txt'
 
-pc_dir = 'predicate-classification/'
+pc_dir = 'data/predicate-classification/'
 
 pc_train_path = pc_dir + 'train.txt'
 pc_dev_path = pc_dir + 'dev.txt'
@@ -15,10 +15,9 @@ pc_test_path = pc_dir + 'test.txt'
 pc_labels_path = pc_dir + 'labels.txt'
 
 
-def write_pc_data(mode: str):
+def write_pc_data(mode: str, detector_out='tmp/detector_predictions.txt',
+                  adjusted_detector_out='tmp/adjusted_detector_predictions.txt'):
     print('processing ' + mode + ' data...')
-    edc_file = edc_train_path
-    pc_file = pc_train_path
     no_label = False
     if mode == 'train':
         edc_file = edc_train_path
@@ -33,8 +32,8 @@ def write_pc_data(mode: str):
         edc_file = edc_dir + 'arabic/test.txt'
         pc_file = pc_dir + 'test_arab.txt'
     else:
-        edc_file = 'models/edc-mbert-cased-combined/test_predictions.txt'
-        pc_file = 'data/test_predictions.txt'
+        edc_file = detector_out
+        pc_file = adjusted_detector_out
         no_label = True
 
     in_file = open(edc_file, 'r')

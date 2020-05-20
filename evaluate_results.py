@@ -1,71 +1,92 @@
 from seqeval import metrics
+import argparse
 
-true_label = []
-words = []
-pred_label = []
 
-true_label_set = set()
-pred_label_set = set()
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--true_data_file",
+                        default=None,
+                        type=str,
+                        required=True,
+                        help="The data file containing the true labels.")
 
-true_file = open('data/event-detection-classification/test.txt', 'r')
+    parser.add_argument("--pred_data_file",
+                        default=None,
+                        type=str,
+                        required=True,
+                        help="The data file containing the predicted labels.")
 
-sentence = []
-label = []
+    args = parser.parse_args()
 
-for line in true_file:
-    line = line.strip()
-    if line:
-        word, tag = line.split()
+    true_label = []
+    words = []
+    pred_label = []
 
-        if tag != 'O':
-            true_label_set.add(tag[2:])
-            tag = tag.replace('---', '+')
-        else:
-            true_label_set.add(tag)
-        sentence.append(word)
-        label.append(tag)
+    true_label_set = set()
+    pred_label_set = set()
 
-    else:
-        true_label.append(label)
-        label = []
+    true_file = open(args.true_data_file, 'r')
 
-true_file.close()
+    sentence = []
+    label = []
 
-print(len(true_label))
+    for line in true_file:
+        line = line.strip()
+        if line:
+            word, tag = line.split()
 
-pred_file = open('test_results.txt', 'r')
-
-for line in pred_file:
-    line = line.strip()
-    if line:
-        word, tag = line.split()
-        pred_label_set.add(tag)
-        if tag != 'O':
-            tag = tag.replace('---', '+')
-            if not label or label[-1] != tag:
-                tag = 'B-' + tag
+            if tag != 'O':
+                true_label_set.add(tag[2:])
+                tag = tag.replace('---', '+')
             else:
-                # label and label[-1] == tag
-                tag = 'I-' + tag
-        sentence.append(word)
-        label.append(tag)
+                true_label_set.add(tag)
+            sentence.append(word)
+            label.append(tag)
 
-    else:
-        pred_label.append(label)
-        label = []
+        else:
+            true_label.append(label)
+            label = []
 
-pred_file.close()
+    true_file.close()
 
-assert len(true_label) == len(pred_label)
+    print(len(true_label))
 
-print('f1: %f' % (metrics.f1_score(true_label, pred_label)))
-print('precision: %f' % (metrics.precision_score(true_label, pred_label)))
-print('recall: %f' % (metrics.recall_score(true_label, pred_label)))
+    pred_file = open(args.pred_data_file, 'r')
 
-print('acc: %f' % (metrics.accuracy_score(true_label, pred_label)))
+    for line in pred_file:
+        line = line.strip()
+        if line:
+            word, tag = line.split()
+            pred_label_set.add(tag)
+            if tag != 'O':
+                tag = tag.replace('---', '+')
+                if not label or label[-1] != tag:
+                    tag = 'B-' + tag
+                else:
+                    # label and label[-1] == tag
+                    tag = 'I-' + tag
+            sentence.append(word)
+            label.append(tag)
 
-print(metrics.classification_report(true_label, pred_label))
+        else:
+            pred_label.append(label)
+            label = []
 
-print('true set: ', true_label_set)
+    pred_file.close()
 
-print('pred set: ', pred_label_set)
+    assert len(true_label) == len(pred_label)
+
+    print('f1: %f' % (metrics.f1_score(true_label, pred_label)))
+    print('precision: %f' % (metrics.precision_score(true_label, pred_label)))
+    print('recall: %f' % (metrics.recall_score(true_label, pred_label)))
+
+    print('acc: %f' % (metrics.accuracy_score(true_label, pred_label)))
+
+    print(metrics.classification_report(true_label, pred_label))
+
+    print('true set: ', true_label_set)
+
+    print('pred set: ', pred_label_set)
+
+if __name__ == '__main__':
+    main()

@@ -31,6 +31,7 @@ import argparse
 import random
 from tqdm import tqdm, trange
 from sklearn import metrics
+import process_data
 
 import numpy as np
 import torch
@@ -749,7 +750,14 @@ def main():
     model.to(device)
 
     if args.do_predict and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        test_examples = processor.get_examples_custom(args.data_dir, example_file='detector_predictions',
+        # Preprocess the detector output
+        detector_prediction_file = 'detector_prediction/detector_predictions.txt'
+        adjusted_detector_prediction_file = os.path.join(args.output_dir, 'adjusted_detector_predictions.txt')
+        process_data.write_pc_data(mode='else', detector_out=detector_prediction_file,
+                                   adjusted_detector_out=adjusted_detector_prediction_file)
+
+        test_examples = processor.get_examples_custom(args.output_dir,
+                                                      example_file='adjusted_detector_predictions',
                                                       has_label=False)
         test_features = convert_examples_to_features(
             test_examples, label_list, args.max_seq_length, tokenizer
@@ -789,9 +797,40 @@ def main():
 
         label_map = {i: label for i, label in enumerate(label_list)}
         y_pred_word = [label_map[lab] for lab in y_pred]
-        with open(args.output_dir+'/classification_predictions.txt', 'w') as out_file:
+        classification_output = os.path.join(args.output_dir, 'classification_predictions.txt')
+        with open(classification_output, 'w') as out_file:
             for w in y_pred_word:
                 out_file.write(w+'\n')
+
+        # classification_prediction_file = open(classification_output, 'r')
+        #
+        # classification_preds = []
+        # for line in classification_prediction_file:
+        #     line = line.strip()
+        #     if line:
+        #         classification_preds.append(line)
+        #
+        # classification_prediction_file.close()
+        classification_preds = y_pred_word
+        i = 0
+        final_prediction_file = os.path.join(args.output_dir, 'final_predictions.txt')
+        out_file = open(final_prediction_file, 'w')
+        detection_prediction_file = open(detector_prediction_file, 'r')
+
+        for line in detection_prediction_file:
+            line = line.strip()
+            if line:
+                word, tag = line.split()
+                if tag != 'O':
+                    out_file.write('%s %s\n' % (word, classification_preds[i]))
+                    i += 1
+                else:
+                    out_file.write('%s %s\n' % (word, tag))
+            else:
+                out_file.write('\n')
+
+        detection_prediction_file.close()
+        out_file.close()
 
 
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
