@@ -1,34 +1,36 @@
 
-test_file = 'models/edc-mbert-cased-combined/test_predictions.txt'
 
-prediction_file = 'raw_predictions.txt'
+if __name__ == '__main__':
 
-pred_file = open(prediction_file, 'r')
+    detection_output = 'data/event-detection-classification/dev.txt'
+    classification_output = 'models/.txt'
 
-preds = []
-for line in pred_file:
-    line = line.strip()
-    if line:
-        preds.append(line)
+    classification_prediction_file = open(classification_output, 'r')
 
-pred_file.close()
+    classification_preds = []
+    for line in classification_prediction_file:
+        line = line.strip()
+        if line:
+            classification_preds.append(line)
 
-i = 0
+    classification_prediction_file.close()
 
-out_file = open('test_results.txt', 'w')
-test_file = open(test_file, 'r')
+    i = 0
 
-for line in test_file:
-    line = line.strip()
-    if line:
-        word, tag = line.split()
-        if tag != 'O':
-            out_file.write('%s %s\n' % (word, preds[i]))
-            i += 1
+    out_file = open('combined_predictions.txt', 'w')
+    detection_prediction_file = open(detection_output, 'r')
+
+    for line in detection_prediction_file:
+        line = line.strip()
+        if line:
+            word, tag = line.split()
+            if tag != 'O':
+                out_file.write('%s %s\n' % (word, classification_preds[i]))
+                i += 1
+            else:
+                out_file.write('%s %s\n' % (word, tag))
         else:
-            out_file.write('%s %s\n' % (word, tag))
-    else:
-        out_file.write('\n')
+            out_file.write('\n')
 
-test_file.close()
-out_file.close()
+    detection_prediction_file.close()
+    out_file.close()

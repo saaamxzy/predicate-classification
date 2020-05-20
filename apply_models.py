@@ -1735,44 +1735,39 @@ class BertForPredicateClassification(PreTrainedBertModel):
         self.binary_emb_dim = 50
         self.bert = BertModel(config)
 
-        # use binary embedding
-        self.binary_embeddings = nn.Embedding(2, self.binary_emb_dim)
-        self.BiLSTM = nn.LSTM(input_size=config.hidden_size + self.binary_emb_dim,
-                                    hidden_size=config.hidden_size // 2,
-                                    bidirectional=True, batch_first=True)
+        # # use binary embedding
+        # self.binary_embeddings = nn.Embedding(2, self.binary_emb_dim)
+        # self.BiLSTM = nn.LSTM(input_size=config.hidden_size + self.binary_emb_dim,
+        #                             hidden_size=config.hidden_size // 2,
+        #                             bidirectional=True, batch_first=True)
+        #
+        # self.BiLSTM2 = nn.LSTM(input_size=config.hidden_size,
+        #                             hidden_size=config.hidden_size // 2,
+        #                             num_layers=1,
+        #                             bidirectional=True, batch_first=True)
+
+        # Not using binary vectors
+        self.BiLSTM = nn.LSTM(input_size=config.hidden_size,
+                              hidden_size=config.hidden_size // 2,
+                              num_layers=1,
+                              bidirectional=True, batch_first=True)
 
         self.BiLSTM2 = nn.LSTM(input_size=config.hidden_size,
-                                    hidden_size=config.hidden_size // 2,
-                                    num_layers=1,
-                                    bidirectional=True, batch_first=True)
+                              hidden_size=config.hidden_size // 2,
+                              num_layers=1,
+                              bidirectional=True, batch_first=True)
 
         self.mlp = nn.Sequential(
             nn.Dropout(0.5),
-            nn.Linear(config.hidden_size*5, 4096),
+            nn.Linear(config.hidden_size*1, 4096),
             nn.ReLU(),
             nn.Linear(4096, self.num_labels)
         )
 
         self.apply(self.init_bert_weights)
 
-        # # Not using binary vectors
-        # self.BiLSTM = nn.LSTM(input_size=config.hidden_size,
-        #                       hidden_size=config.hidden_size // 2,
-        #                       num_layers=1,
-        #                       bidirectional=True, batch_first=True)
-        # self.BiLSTM.flatten_parameters()
-        #
-        # self.BiLSTM2 = nn.LSTM(input_size=config.hidden_size,
-        #                       hidden_size=config.hidden_size // 2,
-        #                       num_layers=1,
-        #                       bidirectional=True, batch_first=True)
-        # self.BiLSTM2.flatten_parameters()
 
-        # self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        # self.fc1 = nn.Linear(config.hidden_size * 3, self.config.hidden_size // 2)
-        # self.relu = nn.ReLU()
-        # self.fc2 = nn.Linear(self.config.hidden_size // 2, self.num_labels)
-        # self.apply(self.init_bert_weights)
+
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, predicate_vector=None):
         # in this predicate classification task, input_ids are the ids of the input tokens in the data,
@@ -1782,11 +1777,12 @@ class BertForPredicateClassification(PreTrainedBertModel):
         # print('bert emb shape:', bert_emb.shape)
         # B for batch, T for sequence length. H for hidden
         # (B, T, H_w)
-
-        binary_features = self.binary_embeddings(predicate_vector)
-        # (B, T, H_b)
-        sequence_output = torch.cat([bert_emb, binary_features], 2)
-        # print('shape of predicate vector:', predicate_vector.shape)
+        if predicate_vector is not None:
+            binary_features = self.binary_embeddings(predicate_vector)
+            # (B, T, H_b)
+            sequence_output = torch.cat([bert_emb, binary_features], 2)
+        else:
+            sequence_output = bert_emb
 
         # (B, T, H_w + H_b)
         hidden = (torch.autograd.Variable(torch.zeros(2, bert_emb.size(0), self.BiLSTM.hidden_size)).cuda(),
@@ -1814,30 +1810,32 @@ class BertForPredicateClassification(PreTrainedBertModel):
         last_hidden = torch.cat((dir1, dir2), dim=-1)
         # (B, T, H)
 
-        # mean pooling and max pooling on the bert sequence_output
-        max_pool, _ = torch.max(bert_emb, dim=1)
-        mean_pool = torch.mean(bert_emb, dim=1)
-
-        # use predicate vector for avg and max pooling
-        indices = (predicate_vector == 0)
-        bert_emb_pred = bert_emb
-        bert_emb_pred[indices] = 0.0
-        bert_emb_pred_summed = torch.sum(bert_emb_pred, dim=1) # sum over seq length
-
-        max_pool_predicate, _ = torch.max(bert_emb_pred, dim=1)
-
-        # need to count how many non zero vectors in each batch
-        num_of_ones = torch.sum(predicate_vector, dim=1)  # sum over batch
-        mean_pool_predicate = bert_emb_pred_summed / num_of_ones.view(-1, 1)
-
-        # use max and mean pool over all words embedding
-        # last_hidden = torch.cat((last_hidden, max_pool, mean_pool), 1)
-
-        # use max and mean pool over predicate embedding + all words
-        # last_hidden =  torch.cat((temp_seq, max_pool_predicate, mean_pool_predicate, max_pool, mean_pool), 1)
+        # # POOLING
+        # # mean pooling and max pooling on the bert sequence_output
+        # max_pool, _ = torch.max(bert_emb, dim=1)
+        # mean_pool = torch.mean(bert_emb, dim=1)
+        #
+        # # use predicate vector for avg and max pooling
+        # indices = (predicate_vector == 0)
+        # bert_emb_pred = bert_emb
+        # bert_emb_pred[indices] = 0.0
+        # bert_emb_pred_summed = torch.sum(bert_emb_pred, dim=1) # sum over seq length
+        #
+        # max_pool_predicate, _ = torch.max(bert_emb_pred, dim=1)
+        #
+        # # need to count how many non zero vectors in each batch
+        # num_of_ones = torch.sum(predicate_vector, dim=1)  # sum over batch
+        # mean_pool_predicate = bert_emb_pred_summed / num_of_ones.view(-1, 1)
+        #
+        # # use max and mean pool over all words embedding
+        # # last_hidden = torch.cat((last_hidden, max_pool, mean_pool), 1)
+        #
+        # # use max and mean pool over predicate embedding + all words
+        # # last_hidden =  torch.cat((temp_seq, max_pool_predicate, mean_pool_predicate, max_pool, mean_pool), 1)
 
         last_hidden = last_hidden.view(input_ids.shape[0], -1)
-        last_hidden = torch.cat((last_hidden, max_pool_predicate, mean_pool_predicate, max_pool, mean_pool), -1)
+        # to use the pooling tensors in fc layers
+        # last_hidden = torch.cat((last_hidden, max_pool_predicate, mean_pool_predicate, max_pool, mean_pool), -1)
 
         # print('l0 shape', last_hidden.shape)
         # hidden = self.dropout(hidden)

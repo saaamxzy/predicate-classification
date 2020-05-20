@@ -188,8 +188,17 @@ class PcProcessor(DataProcessor):
         """See base class."""
         return read_examples_from_file(data_dir, 'dev')
 
-    def get_test_examples(self, data_dir):
+    def get_test_examples_without_label(self, data_dir):
         return read_examples_from_file(data_dir, 'test_predictions', has_label=False)
+
+    def get_test_examples(self, data_dir):
+        return read_examples_from_file(data_dir, 'test')
+
+    def get_arab_test_examples(self, data_dir):
+        return read_examples_from_file(data_dir, 'test_arab')
+
+    def get_examples_custom(self, data_dir, example_file, has_label):
+        return read_examples_from_file(data_dir, example_file, has_label)
 
     def get_labels(self):
         """See base class."""
@@ -439,6 +448,9 @@ def main():
                         help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
                              "0 (default value): dynamic loss scaling.\n"
                              "Positive power of 2: static loss scaling value.\n")
+    parser.add_argument('--use_predicate_indicator',
+                        action='store_true',
+                        help="Whether to use predicate position indicator as input.")
 
     args = parser.parse_args()
 
@@ -474,8 +486,8 @@ def main():
     if n_gpu > 0:
         torch.cuda.manual_seed_all(args.seed)
 
-    if not args.do_train and not args.do_eval:
-        raise ValueError("At least one of `do_train` or `do_eval` must be True.")
+    if not args.do_train and not args.do_eval and not args.do_predict:
+        raise ValueError("At least one of `do_train`, `do_eval` or `do_predict` must be True.")
 
     if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train:
         raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
@@ -492,7 +504,7 @@ def main():
 
     tokenizer = BertTokenizer.from_pretrained(args.bert_model, do_lower_case=args.do_lower_case)
 
-    if not args.load_pretrained:
+    if args.do_train:
 
         train_examples = None
         num_train_steps = None
@@ -584,7 +596,6 @@ def main():
         eval_sampler = SequentialSampler(eval_data)
         eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.eval_batch_size)
 
-
         if args.do_train:
             train_features = convert_examples_to_features(
                 train_examples, label_list, args.max_seq_length, tokenizer)
@@ -617,8 +628,10 @@ def main():
                     batch = tuple(t.to(device) for t in batch)
                     input_ids, input_mask, segment_ids, label_ids, predicate_vectors = batch
                     # print(input_ids, input_mask, segment_ids, label_ids)
-
-                    loss, logits = model(input_ids, segment_ids, input_mask, label_ids, predicate_vectors)
+                    if args.use_predicate_indicator:
+                        loss, logits = model(input_ids, segment_ids, input_mask, label_ids, predicate_vectors)
+                    else:
+                        loss, logits = model(input_ids, segment_ids, input_mask, label_ids)
                     if n_gpu > 1:
                         loss = loss.mean()  # mean() to average on multi-gpu.
                     if args.gradient_accumulation_steps > 1:
@@ -674,8 +687,14 @@ def main():
                         predicate_vectors = predicate_vectors.to(device)
 
                         with torch.no_grad():
-                            tmp_eval_loss, _ = model(input_ids, segment_ids, input_mask, label_ids, predicate_vectors)
-                            logits = model(input_ids, segment_ids, input_mask, predicate_vector=predicate_vectors)
+
+                            if args.use_predicate_indicator:
+                                tmp_eval_loss, _ = model(input_ids, segment_ids, input_mask, label_ids,
+                                                         predicate_vectors)
+                                logits = model(input_ids, segment_ids, input_mask, predicate_vector=predicate_vectors)
+                            else:
+                                tmp_eval_loss, _ = model(input_ids, segment_ids, input_mask, label_ids)
+                                logits = model(input_ids, segment_ids, input_mask)
 
                         logits = logits.detach().cpu().numpy()
                         label_ids = label_ids.to('cpu').numpy()
@@ -730,7 +749,8 @@ def main():
     model.to(device)
 
     if args.do_predict and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        test_examples = processor.get_test_examples(args.data_dir)
+        test_examples = processor.get_examples_custom(args.data_dir, example_file='detector_predictions',
+                                                      has_label=False)
         test_features = convert_examples_to_features(
             test_examples, label_list, args.max_seq_length, tokenizer
         )
@@ -758,7 +778,10 @@ def main():
             predicate_vectors = predicate_vectors.to(device)
 
             with torch.no_grad():
-                logits = model(input_ids, segment_ids, input_mask, predicate_vector=predicate_vectors)
+                if args.use_predicate_indicator:
+                    logits = model(input_ids, segment_ids, input_mask, predicate_vector=predicate_vectors)
+                else:
+                    logits = model(input_ids, segment_ids, input_mask)
 
             logits = logits.detach().cpu().numpy()
 
@@ -766,13 +789,13 @@ def main():
 
         label_map = {i: label for i, label in enumerate(label_list)}
         y_pred_word = [label_map[lab] for lab in y_pred]
-        with open('raw_predictions.txt', 'w') as out_file:
+        with open(args.output_dir+'/classification_predictions.txt', 'w') as out_file:
             for w in y_pred_word:
                 out_file.write(w+'\n')
 
 
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        eval_examples = processor.get_dev_examples(args.data_dir)
+        eval_examples = processor.get_arab_test_examples(args.data_dir)
         eval_features = convert_examples_to_features(
             eval_examples, label_list, args.max_seq_length, tokenizer)
         logger.info("***** Running evaluation *****")
@@ -803,8 +826,12 @@ def main():
             predicate_vectors = predicate_vectors.to(device)
 
             with torch.no_grad():
-                tmp_eval_loss, _ = model(input_ids, segment_ids, input_mask, label_ids, predicate_vectors)
-                logits = model(input_ids, segment_ids, input_mask, predicate_vector=predicate_vectors)
+                if args.use_predicate_indicator:
+                    tmp_eval_loss, _ = model(input_ids, segment_ids, input_mask, label_ids, predicate_vectors)
+                    logits = model(input_ids, segment_ids, input_mask, predicate_vector=predicate_vectors)
+                else:
+                    tmp_eval_loss, _ = model(input_ids, segment_ids, input_mask, label_ids)
+                    logits = model(input_ids, segment_ids, input_mask)
 
             logits = logits.detach().cpu().numpy()
             label_ids = label_ids.to('cpu').numpy()
@@ -849,7 +876,7 @@ def main():
             if wrong:
                 rs.append(eval_examples[i])
         print('wrong predictions total number: ', len(rs))
-        wrong_file = open('wrong_predictions.txt', 'w')
+        wrong_file = open(args.output_dir+'wrong_predictions.txt', 'w')
 
         for i, entry in enumerate(rs):
             assert y_true_word[int(entry.guid.split('-')[-1])-1] == entry.label, \
@@ -862,8 +889,6 @@ def main():
             wrong_file.write('\n')
 
         wrong_file.close()
-
-
 
         conf_mat = metrics.confusion_matrix(y_true_word, y_pred_word, labels=label_list)
         # print_dict(label_map)

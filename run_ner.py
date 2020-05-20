@@ -677,7 +677,7 @@ def main():
         # Save predictions
         output_test_predictions_file = os.path.join(args.output_dir, "detector_test_predictions.txt")
         with open(output_test_predictions_file, "w") as writer:
-            with open(os.path.join(args.data_dir, args.test_file), "r") as f:
+            with open(os.path.join(args.data_dir, args.test_file+'.txt'), "r") as f:
             # with open("data/event-detection/arabic/test.txt", "r", encoding='utf-8') as f:
                 example_id = 0
                 for line in f:

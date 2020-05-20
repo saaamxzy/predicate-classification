@@ -29,6 +29,9 @@ def write_pc_data(mode: str):
     elif mode == 'test':
         edc_file = edc_test_path
         pc_file = pc_test_path
+    elif mode == 'arab':
+        edc_file = edc_dir + 'arabic/test.txt'
+        pc_file = pc_dir + 'test_arab.txt'
     else:
         edc_file = 'models/edc-mbert-cased-combined/test_predictions.txt'
         pc_file = 'data/test_predictions.txt'
@@ -88,7 +91,8 @@ def main():
     # write_pc_data('train')
     # write_pc_data('dev')
     # write_pc_data('test')
-    write_pc_data('else')
+    write_pc_data('arab')
+    # write_pc_data('else')
 
 
 if __name__ == '__main__':
