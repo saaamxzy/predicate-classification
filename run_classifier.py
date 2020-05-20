@@ -452,6 +452,10 @@ def main():
     parser.add_argument('--use_predicate_indicator',
                         action='store_true',
                         help="Whether to use predicate position indicator as input.")
+    parser.add_argument('--detector_prediction_file',
+                        type=str,
+                        help="The path of the detector_prediction_file")
+
 
     args = parser.parse_args()
 
@@ -751,7 +755,8 @@ def main():
 
     if args.do_predict and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
         # Preprocess the detector output
-        detector_prediction_file = 'detector_prediction/detector_predictions.txt'
+        detector_prediction_file = args.detector_prediction_file
+        #detector_prediction_file = 'detector_prediction/detector_predictions.txt'
         adjusted_detector_prediction_file = os.path.join(args.output_dir, 'adjusted_detector_predictions.txt')
         process_data.write_pc_data(mode='else', detector_out=detector_prediction_file,
                                    adjusted_detector_out=adjusted_detector_prediction_file)
@@ -915,7 +920,7 @@ def main():
             if wrong:
                 rs.append(eval_examples[i])
         print('wrong predictions total number: ', len(rs))
-        wrong_file = open(args.output_dir+'wrong_predictions.txt', 'w')
+        wrong_file = open(os.path.join(args.output_dir, 'wrong_predictions.txt'), 'w')
 
         for i, entry in enumerate(rs):
             assert y_true_word[int(entry.guid.split('-')[-1])-1] == entry.label, \
