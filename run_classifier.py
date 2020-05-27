@@ -40,7 +40,7 @@ from torch.utils.data.distributed import DistributedSampler
 
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 #from modeling import BertForSequenceClassification
-from apply_models import BertForPredicateClassification
+from apply_models import BertForPredicateClassification, BertForPredicateClassificationWithTransformer
 from pytorch_pretrained_bert.optimization import BertAdam
 from pytorch_pretrained_bert.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 
@@ -53,7 +53,8 @@ logger = logging.getLogger(__name__)
 class InputExample(object):
     """A single training/test example for simple sequence classification."""
 
-    def __init__(self, guid, text_a, text_b=None, label=None, predicate_vector=None):
+    def __init__(self, guid, text_a, text_b=None, label=None, predicate_vector=None,
+                 all_predicate_vectors=None):
         """Constructs a InputExample.
 
         Args:
@@ -64,14 +65,17 @@ class InputExample(object):
             Only must be specified for sequence pair tasks.
             label: (Optional) string. The label of the example. This should be
             specified for train and dev examples, but not for test examples.
-            predicate: (Optional) string. The binary vector indicating the location
+            predicate_vector: (Optional) string. The binary vector indicating the location
             of the predicate word in a sentence.
+            all_predicate_vectors: (Optional) string. The binary vector indicating the
+            locations of all the predicates in a sentence.
         """
         self.guid = guid
         self.text_a = text_a
         self.text_b = text_b
         self.label = label
         self.predicate_vector = predicate_vector
+        self.all_predicate_vectors = all_predicate_vectors
 
     def __str__(self):
         return 'guid: %s\ttext_a: %s\ttext_b: %s\tlabel: %s\tpredicate: %s' % (self.guid, self.text_a, self.text_b,
@@ -85,12 +89,15 @@ class InputExample(object):
 class InputFeatures(object):
     """A single set of features of data."""
 
-    def __init__(self, input_ids, input_mask, segment_ids, label_id, predicate_vector):
+    def __init__(self, input_ids, input_mask, segment_ids, label_id, predicate_vector, all_predicate_vectors=None):
         self.input_ids = input_ids
         self.input_mask = input_mask
         self.segment_ids = segment_ids
         self.label_id = label_id
         self.predicate_vector = predicate_vector
+        self.all_predicate_vectors = None
+        if all_predicate_vectors is not None:
+            self.all_predicate_vectors = all_predicate_vectors
 
 def warmup_linear(x, warmup=0.002):
     if x < warmup:
@@ -147,6 +154,37 @@ def read_examples_from_file(data_dir, mode=None, has_label=True):
                     predicate_vector.append(0)
 
 
+    print('Total number of examples loaded: ', num_sentences)
+    return examples
+
+def read_examples_from_file_v2(data_dir, mode=None, has_label=True):
+    file_path = os.path.join(data_dir, '{}.txt'.format(mode))
+
+    guid_index = 1
+    examples = []
+
+    with open(file_path, encoding='utf-8') as f:
+        num_sentences = 0
+        for line in f:
+            line = line.strip()
+            if line:
+                line_ls = line.split('|||')
+                sentence = line_ls[0]
+                preds = line_ls[1]
+                label = line_ls[2]
+                predicate_idx = line_ls[3]
+                words = sentence.split()
+                predicate_vector = [0 for _ in range(len(words))]
+                all_predicate_vectors = [0 for _ in range(len(words))]
+                predicate_vector[int(predicate_idx)] = 1
+                for idx in preds.split():
+                    all_predicate_vectors[int(idx)] = 1
+                examples.append(InputExample(guid='{}-{}'.format(mode, guid_index),
+                                             text_a=sentence,
+                                             text_b=words[int(predicate_idx)],
+                                             label=label,
+                                             predicate_vector = predicate_vector,
+                                             all_predicate_vectors=all_predicate_vectors))
     print('Total number of examples loaded: ', num_sentences)
     return examples
 
@@ -208,6 +246,37 @@ class PcProcessor(DataProcessor):
         # return get_labels_from_file('./data/first_quad/labels.txt')
 
 
+class PcProcessorV2(DataProcessor):
+    """Processor for the predicate classification data set."""
+
+    def get_train_examples(self, data_dir):
+        """See base class."""
+        logger.info("LOOKING AT {}".format(os.path.join(data_dir, "train.txt")))
+        return read_examples_from_file_v2(data_dir, 'train')
+
+    def get_dev_examples(self, data_dir):
+        """See base class."""
+        return read_examples_from_file_v2(data_dir, 'dev')
+
+    def get_test_examples_without_label(self, data_dir):
+        return read_examples_from_file_v2(data_dir, 'test_predictions', has_label=False)
+
+    def get_test_examples(self, data_dir):
+        return read_examples_from_file_v2(data_dir, 'test')
+
+    def get_arab_test_examples(self, data_dir):
+        return read_examples_from_file_v2(data_dir, 'test_arab')
+
+    def get_examples_custom(self, data_dir, example_file, has_label):
+        return read_examples_from_file_v2(data_dir, example_file, has_label)
+
+    def get_labels(self):
+        """See base class."""
+        return get_labels_from_file('./data/predicate-classification/labels.txt')
+        # return get_labels_from_file('./data/second_quad/labels.txt')
+        # return get_labels_from_file('./data/first_quad/labels.txt')
+
+
 def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer):
     """Loads a data file into a list of `InputBatch`s."""
 
@@ -217,10 +286,13 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
     features = []
     for (ex_index, example) in enumerate(examples):
         predicate_vector = example.predicate_vector
+        all_predicate_vectors = example.all_predicate_vectors
         text_a_ls = example.text_a.split(' ')
         assert len(predicate_vector) == len(text_a_ls), 'length of predicate vector is not the same as length of text_a'
+        assert len(all_predicate_vectors) == len(text_a_ls), 'length of all pred vector wrong.'
 
         predicate_vector_tokenized = []
+        all_predicate_vectors_tokenized = []
         tokens_temp = []
         for i, word in enumerate(text_a_ls):
             word_token = tokenizer.tokenize(word)
@@ -228,6 +300,10 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
                 predicate_vector_tokenized.extend([1] * len(word_token))
             else:
                 predicate_vector_tokenized.extend([0] * len(word_token))
+            if all_predicate_vectors[i] == 1:
+                all_predicate_vectors_tokenized.extend([1] * len(word_token))
+            else:
+                all_predicate_vectors_tokenized.extend([0] * len(word_token))
             tokens_temp.extend(word_token)
 
         # tokenize the whole sentence
@@ -271,11 +347,13 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         tokens = ["[CLS]"] + tokens_a + ["[SEP]"]
         segment_ids = [0] * len(tokens)
         predicate_vector_tokenized = [0] + predicate_vector_tokenized + [0]
+        all_predicate_vectors_tokenized = [0] + all_predicate_vectors_tokenized + [0]
 
         if tokens_b:
             tokens += tokens_b + ["[SEP]"]
             segment_ids += [1] * (len(tokens_b) + 1)
             predicate_vector_tokenized.extend([0] * (len(tokens_b) + 1))
+            all_predicate_vectors_tokenized.extend([0] * (len(tokens_b) + 1))
 
         # print('tokens_a: ', tokens_a)
         # print('tokens_b: ', tokens_b)
@@ -287,6 +365,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
 
         # pad the predicate vector to match the length of input_ids
         predicate_vector_tokenized += [0] * (len(input_ids) - len(predicate_vector_tokenized))
+        all_predicate_vectors_tokenized += [0] * (len(input_ids) - len(all_predicate_vectors_tokenized))
 
         # Zero-pad up to the sequence length.
         padding = [0] * (max_seq_length - len(input_ids))
@@ -294,11 +373,16 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         input_mask += padding
         segment_ids += padding
         predicate_vector_tokenized += padding
+        all_predicate_vectors_tokenized += padding
 
         assert len(input_ids) == max_seq_length
         assert len(input_mask) == max_seq_length
         assert len(segment_ids) == max_seq_length
-        assert len(predicate_vector_tokenized) == max_seq_length, "left: %s\tright: %s" % (len(predicate_vector_tokenized), max_seq_length)
+        assert len(predicate_vector_tokenized) == max_seq_length, "left: %s\tright: %s" % \
+                                                                  (len(predicate_vector_tokenized), max_seq_length)
+        assert len(all_predicate_vectors_tokenized) == max_seq_length, "left: %s\tright: %s" % \
+                                                                (len(all_predicate_vectors_tokenized), max_seq_length)
+
         # if predicate_vector_tokenized.count(1) > 1:
         #     print('tokens:', tokens)
         #     print('predicate vector: ', predicate_vector_tokenized)
@@ -325,7 +409,8 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
                           input_mask=input_mask,
                           segment_ids=segment_ids,
                           label_id=label_id,
-                          predicate_vector=predicate_vector_tokenized))
+                          predicate_vector=predicate_vector_tokenized,
+                          all_predicate_vectors=all_predicate_vectors_tokenized))
     return features
 
 
@@ -344,6 +429,20 @@ def _truncate_seq_pair(tokens_a, tokens_b, max_length):
             tokens_a.pop()
         else:
             tokens_b.pop()
+
+
+def features_to_dataset(features, has_label=True):
+    all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
+    all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
+    all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
+    if has_label:
+        all_label_ids = torch.tensor([f.label_id for f in features], dtype=torch.long)
+    all_predicate_vectors = torch.tensor([f.predicate_vector for f in features], dtype=torch.long)
+    if has_label:
+        dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, all_predicate_vectors)
+    else:
+        dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_predicate_vectors)
+    return dataset
 
 
 def main():
@@ -452,6 +551,9 @@ def main():
     parser.add_argument('--use_predicate_indicator',
                         action='store_true',
                         help="Whether to use predicate position indicator as input.")
+    parser.add_argument('--use_all_predicate_indicators',
+                        action='store_true',
+                        help="Whether to use positions of all predicate as input.")
     parser.add_argument('--detector_prediction_file',
                         type=str,
                         help="The path of the detector_prediction_file")
@@ -460,12 +562,16 @@ def main():
     args = parser.parse_args()
 
     processors = {
-        "pc": PcProcessor
+        "pc": PcProcessor,
+        "pc2": PcProcessorV2
     }
 
     num_labels_task = {
-        "pc": 12
+        "pc": 12,
+        "pc2": 12
     }
+
+    bert_model = BertForPredicateClassificationWithTransformer
 
     if args.local_rank == -1 or args.no_cuda:
         device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
@@ -508,7 +614,7 @@ def main():
     label_list = processor.get_labels()
 
     tokenizer = BertTokenizer.from_pretrained(args.bert_model, do_lower_case=args.do_lower_case)
-
+    # torch.autograd.set_detect_anomaly(True)
     if args.do_train:
 
         train_examples = None
@@ -521,7 +627,7 @@ def main():
                 len(train_examples) / args.train_batch_size / args.gradient_accumulation_steps * args.num_train_epochs)
 
         # Prepare model
-        model = BertForPredicateClassification.from_pretrained(args.bert_model,
+        model = bert_model.from_pretrained(args.bert_model,
                                                               cache_dir=PYTORCH_PRETRAINED_BERT_CACHE / 'distributed_{}'.format(
                                                                   args.local_rank),
                                                               num_labels=num_labels)
@@ -530,7 +636,7 @@ def main():
             # Load a pre-trained model
             print('load a pre-trained model from ' + args.pretrained_model_file)
             model_state_dict = torch.load(args.pretrained_model_file)
-            model = BertForPredicateClassification.from_pretrained(args.bert_model, state_dict=model_state_dict,
+            model = bert_model.from_pretrained(args.bert_model, state_dict=model_state_dict,
                                                                   num_labels=num_labels)
             model.to(device)
 
@@ -591,15 +697,13 @@ def main():
         logger.info("***** Running evaluation *****")
         logger.info("  Num examples = %d", len(eval_examples))
         logger.info("  Batch size = %d", args.eval_batch_size)
-        all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
-        all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
-        all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
-        all_label_ids = torch.tensor([f.label_id for f in eval_features], dtype=torch.long)
-        all_predicate_vectors = torch.tensor([f.predicate_vector for f in eval_features], dtype=torch.long)
-        eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, all_predicate_vectors)
+        eval_data = features_to_dataset(eval_features)
         # Run prediction for full data
         eval_sampler = SequentialSampler(eval_data)
         eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.eval_batch_size)
+
+        # for param in model.bert.parameters():
+        #     param.requires_grad = False
 
         if args.do_train:
             train_features = convert_examples_to_features(
@@ -609,12 +713,7 @@ def main():
             logger.info("  Num examples = %d", len(train_examples))
             logger.info("  Batch size = %d", args.train_batch_size)
             logger.info("  Num steps = %d", num_train_steps)
-            all_input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long)
-            all_input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long)
-            all_segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long)
-            all_label_ids = torch.tensor([f.label_id for f in train_features], dtype=torch.long)
-            all_predicate_vectors = torch.tensor([f.predicate_vector for f in train_features], dtype=torch.long)
-            train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, all_predicate_vectors)
+            train_data = features_to_dataset(train_features)
             if args.local_rank == -1:
                 train_sampler = RandomSampler(train_data)
             else:
@@ -749,7 +848,7 @@ def main():
     # Load a trained model that you have fine-tuned
     output_model_file = os.path.join(args.output_dir, "pytorch_model.bin")
     model_state_dict = torch.load(output_model_file)
-    model = BertForPredicateClassification.from_pretrained(args.bert_model, state_dict=model_state_dict,
+    model = bert_model.from_pretrained(args.bert_model, state_dict=model_state_dict,
                                                           num_labels=num_labels)
     model.to(device)
 
@@ -771,11 +870,8 @@ def main():
         logger.info("***** Running Prediction *****")
         logger.info("  Num examples = %d", len(test_examples))
         logger.info("  Batch size = %d", args.eval_batch_size)
-        all_input_ids = torch.tensor([f.input_ids for f in test_features], dtype=torch.long)
-        all_input_mask = torch.tensor([f.input_mask for f in test_features], dtype=torch.long)
-        all_segment_ids = torch.tensor([f.segment_ids for f in test_features], dtype=torch.long)
-        all_predicate_vectors = torch.tensor([f.predicate_vector for f in test_features], dtype=torch.long)
-        test_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_predicate_vectors)
+
+        test_data = features_to_dataset(test_features, has_label=False)
         # Run prediction for full data
         test_sampler = SequentialSampler(test_data)
         test_dataloader = DataLoader(test_data, sampler=test_sampler, batch_size=args.eval_batch_size)
@@ -845,12 +941,7 @@ def main():
         logger.info("***** Running evaluation *****")
         logger.info("  Num examples = %d", len(eval_examples))
         logger.info("  Batch size = %d", args.eval_batch_size)
-        all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
-        all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
-        all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
-        all_label_ids = torch.tensor([f.label_id for f in eval_features], dtype=torch.long)
-        all_predicate_vectors = torch.tensor([f.predicate_vector for f in eval_features], dtype=torch.long)
-        eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, all_predicate_vectors)
+        eval_data = features_to_dataset(eval_features)
         # Run prediction for full data
         eval_sampler = SequentialSampler(eval_data)
         eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.eval_batch_size)

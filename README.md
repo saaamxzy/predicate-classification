@@ -80,9 +80,9 @@ Model performance:
 
 |Metric|English Dev|English Test|Arabic Test|
 |---|---|---|---|
-|Precision|60.5|59.8|36.2|
-|Recall|65.5|64.5|47.2|
-|F1|62.9|62.0|41.0|
+|Precision|61.5|60.4|38.3|
+|Recall|66.6|65.2|50.0|
+|F1|64.0|62.7|43.4|
 
 ####12-class classification accuracy for all three models:
 

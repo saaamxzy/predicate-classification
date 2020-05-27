@@ -516,6 +516,7 @@ class PreTrainedBertModel(nn.Module):
         # Load config
         config_file = os.path.join(serialization_dir, CONFIG_NAME)
         config = BertConfig.from_json_file(config_file)
+        # config.hidden_size = 756
         logger.info("Model config {}".format(config))
         # Instantiate model.
         model = cls(config, *inputs, **kwargs)
@@ -1725,7 +1726,7 @@ class BertForPredicateClassification(PreTrainedBertModel):
 
     num_labels = 2
 
-    model = BertForTokenClassification(config, num_labels)
+    model = BertForPredicateClassification(config, num_labels)
     logits = model(input_ids, token_type_ids, input_mask)
     ```
     """
@@ -1734,6 +1735,7 @@ class BertForPredicateClassification(PreTrainedBertModel):
         self.num_labels = num_labels
         self.binary_emb_dim = 50
         self.bert = BertModel(config)
+        print('bert hidden size:', config.hidden_size)
 
         # use binary embedding
         self.binary_embeddings = nn.Embedding(2, self.binary_emb_dim)
@@ -1741,10 +1743,10 @@ class BertForPredicateClassification(PreTrainedBertModel):
                                     hidden_size=config.hidden_size // 2,
                                     bidirectional=True, batch_first=True)
 
-        self.BiLSTM2 = nn.LSTM(input_size=config.hidden_size,
-                                    hidden_size=config.hidden_size // 2,
-                                    num_layers=1,
-                                    bidirectional=True, batch_first=True)
+        # self.BiLSTM2 = nn.LSTM(input_size=config.hidden_size,
+        #                             hidden_size=config.hidden_size // 2,
+        #                             num_layers=1,
+        #                             bidirectional=True, batch_first=True)
 
         # # Not using binary vectors
         # self.BiLSTM = nn.LSTM(input_size=config.hidden_size,
@@ -1767,14 +1769,20 @@ class BertForPredicateClassification(PreTrainedBertModel):
         self.apply(self.init_bert_weights)
 
 
-
-
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, predicate_vector=None):
         # in this predicate classification task, input_ids are the ids of the input tokens in the data,
         # token_type_ids are the segment ids of standard bert model inputs.
         # attention_mask ???
         bert_emb, _ = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
-        # print('bert emb shape:', bert_emb.shape)
+        # extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+        # # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
+        # # masked positions, this operation will create a tensor which is 0.0 for
+        # # positions we want to attend and -10000.0 for masked positions.
+        # # Since we are adding it to the raw scores before the softmax, this is
+        # # effectively the same as removing these entirely.
+        # extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
+        # extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
+
         # B for batch, T for sequence length. H for hidden
         # (B, T, H_w)
         if predicate_vector is not None:
@@ -1791,9 +1799,9 @@ class BertForPredicateClassification(PreTrainedBertModel):
         # print(sequence_output.shape, hidden[0].shape, hidden[1].shape)
         sequence_output, hidden = self.BiLSTM(sequence_output, hidden)
         sequence_output = sequence_output.contiguous()
-        self.BiLSTM2.flatten_parameters()
-        sequence_output, hidden = self.BiLSTM2(sequence_output, hidden)
-        sequence_output = sequence_output.contiguous()
+        # self.BiLSTM2.flatten_parameters()
+        # sequence_output, hidden = self.BiLSTM2(sequence_output, hidden)
+        # sequence_output = sequence_output.contiguous()
         # print('seqout shape:', sequence_output.shape)
         # print('hidden shape:', hidden[0].shape)
 
@@ -1842,6 +1850,170 @@ class BertForPredicateClassification(PreTrainedBertModel):
         # hidden = self.dropout(hidden)
         # sequence_output = self.relu(self.fc1(last_hidden))
         logits = self.mlp(last_hidden)
+        if labels is not None:
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            return loss, logits
+        else:
+            # _, y_predict = torch.max(logits, dim=-1)
+            return logits
+
+
+class BertForPredicateClassificationWithTransformer(PreTrainedBertModel):
+    """BERT model for token-level classification.
+    This module is composed of the BERT model with a linear layer on top of
+    the full hidden state of the last layer.
+
+    Params:
+        `config`: a BertConfig class instance with the configuration to build a new model.
+        `num_labels`: the number of classes for the classifier. Default = 2.
+
+    Inputs:
+        `input_ids`: a torch.LongTensor of shape [batch_size, sequence_length]
+            with the word token indices in the vocabulary(see the tokens preprocessing logic in the scripts
+            `extract_features.py`, `run_classifier.py` and `run_squad.py`)
+        `token_type_ids`: an optional torch.LongTensor of shape [batch_size, sequence_length] with the token
+            types indices selected in [0, 1]. Type 0 corresponds to a `sentence A` and type 1 corresponds to
+            a `sentence B` token (see BERT paper for more details).
+        `attention_mask`: an optional torch.LongTensor of shape [batch_size, sequence_length] with indices
+            selected in [0, 1]. It's a mask to be used if the input sequence length is smaller than the max
+            input sequence length in the current batch. It's the mask that we typically use for attention when
+            a batch has varying length sentences.
+        `labels`: labels for the classification output: torch.LongTensor of shape [batch_size]
+            with indices selected in [0, ..., num_labels].
+
+    Outputs:
+        if `labels` is not `None`:
+            Outputs the CrossEntropy classification loss of the output with the labels.
+        if `labels` is `None`:
+            Outputs the classification logits of shape [batch_size, sequence_length, num_labels].
+
+    Example usage:
+    ```python
+    # Already been converted into WordPiece token ids
+    input_ids = torch.LongTensor([[31, 51, 99], [15, 5, 0]])
+    input_mask = torch.LongTensor([[1, 1, 1], [1, 1, 0]])
+    token_type_ids = torch.LongTensor([[0, 0, 1], [0, 1, 0]])
+
+    config = BertConfig(vocab_size_or_config_json_file=32000, hidden_size=768,
+        num_hidden_layers=12, num_attention_heads=12, intermediate_size=3072)
+
+    num_labels = 2
+
+    model = BertForPredicateClassificationWithTransformer(config, num_labels)
+    logits = model(input_ids, token_type_ids, input_mask)
+    ```
+    """
+    def __init__(self, config, num_labels):
+        super(BertForPredicateClassificationWithTransformer, self).__init__(config)
+        self.num_labels = num_labels
+        self.binary_emb_dim = 50
+        self.bert = BertModel(config)
+        print('bert hidden size:', config.hidden_size)
+
+        # use binary embedding
+        self.binary_embeddings = nn.Embedding(2, self.binary_emb_dim)
+        # self.BiLSTM = nn.LSTM(input_size=config.hidden_size + self.binary_emb_dim,
+        #                             hidden_size=config.hidden_size // 2,
+        #                             bidirectional=True, batch_first=True)
+        #
+        # self.BiLSTM2 = nn.LSTM(input_size=config.hidden_size,
+        #                             hidden_size=config.hidden_size // 2,
+        #                             num_layers=1,
+        #                             bidirectional=True, batch_first=True)
+
+        # # Not using binary vectors
+        # self.BiLSTM = nn.LSTM(input_size=config.hidden_size,
+        #                       hidden_size=config.hidden_size // 2,
+        #                       num_layers=1,
+        #                       bidirectional=True, batch_first=True)
+        #
+        # self.BiLSTM2 = nn.LSTM(input_size=config.hidden_size,
+        #                       hidden_size=config.hidden_size // 2,
+        #                       num_layers=1,
+        #                       bidirectional=True, batch_first=True)
+
+        # Use transformer
+        self.hidden_ESRL = Interaction_2layer(config)
+
+        self.mlp = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(config.hidden_size*5 + self.binary_emb_dim, 4096),
+            # nn.Linear(config.hidden_size * 4, 4096),
+            nn.ReLU(),
+            nn.Linear(4096, self.num_labels)
+        )
+
+        self.apply(self.init_bert_weights)
+
+
+
+
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, predicate_vector=None):
+        # in this predicate classification task, input_ids are the ids of the input tokens in the data,
+        # token_type_ids are the segment ids of standard bert model inputs.
+        # attention_mask ???
+        bert_emb, _ = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+        extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+        # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
+        # masked positions, this operation will create a tensor which is 0.0 for
+        # positions we want to attend and -10000.0 for masked positions.
+        # Since we are adding it to the raw scores before the softmax, this is
+        # effectively the same as removing these entirely.
+        extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
+        extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
+
+        sequence_output = self.hidden_ESRL(bert_emb.clone(), extended_attention_mask)
+        sequence_output = sequence_output.contiguous()
+        # seq_out = sequence_output[:, -1, :].clone()
+
+        # B for batch, T for sequence length. H for hidden
+        # (B, T, H_w)
+        if predicate_vector is not None:
+            binary_features = self.binary_embeddings(predicate_vector)
+            # (B, T, H_b)
+            # print('shape of seq out:', sequence_output.shape)
+            # print('shape of binary fea:', binary_features.shape)
+            # sequence_output = torch.cat([seq_out, bf], -1)
+            sequence_output = torch.cat([sequence_output, binary_features], 2)
+
+
+        # (B, T, H_w + H_b)
+
+        # POOLING
+        # mean pooling and max pooling on the bert sequence_output
+        max_pool, _ = torch.max(bert_emb, dim=1)
+        mean_pool = torch.mean(bert_emb, dim=1)
+
+        # use predicate vector for avg and max pooling
+        indices = (predicate_vector == 0)
+        bert_emb_pred = bert_emb
+        bert_emb_pred[indices] = 0.0
+        bert_emb_pred_summed = torch.sum(bert_emb_pred, dim=1) # sum over seq length
+
+        max_pool_predicate, _ = torch.max(bert_emb_pred, dim=1)
+
+        # need to count how many non zero vectors in each batch
+        num_of_ones = torch.sum(predicate_vector, dim=1)  # sum over batch
+        mean_pool_predicate = bert_emb_pred_summed / num_of_ones.view(-1, 1)
+
+        # use max and mean pool over all words embedding
+        # last_hidden = torch.cat((last_hidden, max_pool, mean_pool), 1)
+
+        # use max and mean pool over predicate embedding + all words
+        # last_hidden =  torch.cat((temp_seq, max_pool_predicate, mean_pool_predicate, max_pool, mean_pool), 1)
+
+        # sequence_output = sequence_output.view(input_ids.shape[0], -1)
+        # to use the pooling tensors in fc layers
+        # print('shape of seq out:', sequence_output.shape)
+        # print('shape of max pool pred:', max_pool_predicate.shape)
+
+        sequence_output = torch.cat((sequence_output[:, -1, :], max_pool_predicate, mean_pool_predicate, max_pool, mean_pool), -1)
+
+        # print('l0 shape', last_hidden.shape)
+        # hidden = self.dropout(hidden)
+        # sequence_output = self.relu(self.fc1(last_hidden))
+        logits = self.mlp(sequence_output)
         if labels is not None:
             loss_fct = CrossEntropyLoss()
             loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
