@@ -1740,7 +1740,8 @@ class BertForPredicateClassification(PreTrainedBertModel):
         # use binary embedding
         self.binary_embeddings = nn.Embedding(2, self.binary_emb_dim)
         self.BiLSTM = nn.LSTM(input_size=config.hidden_size + self.binary_emb_dim,
-                                    hidden_size=config.hidden_size // 2,
+                                    hidden_size=384,
+                                    # hidden_size=32,
                                     bidirectional=True, batch_first=True)
 
         # self.BiLSTM2 = nn.LSTM(input_size=config.hidden_size,
@@ -1774,14 +1775,6 @@ class BertForPredicateClassification(PreTrainedBertModel):
         # token_type_ids are the segment ids of standard bert model inputs.
         # attention_mask ???
         bert_emb, _ = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
-        # extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-        # # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
-        # # masked positions, this operation will create a tensor which is 0.0 for
-        # # positions we want to attend and -10000.0 for masked positions.
-        # # Since we are adding it to the raw scores before the softmax, this is
-        # # effectively the same as removing these entirely.
-        # extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
-        # extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
 
         # B for batch, T for sequence length. H for hidden
         # (B, T, H_w)
@@ -1799,23 +1792,11 @@ class BertForPredicateClassification(PreTrainedBertModel):
         # print(sequence_output.shape, hidden[0].shape, hidden[1].shape)
         sequence_output, hidden = self.BiLSTM(sequence_output, hidden)
         sequence_output = sequence_output.contiguous()
-        # self.BiLSTM2.flatten_parameters()
-        # sequence_output, hidden = self.BiLSTM2(sequence_output, hidden)
-        # sequence_output = sequence_output.contiguous()
-        # print('seqout shape:', sequence_output.shape)
-        # print('hidden shape:', hidden[0].shape)
-
-        # self.BiLSTM2.flatten_parameters()
-        # sequence_output, hidden = self.BiLSTM2(sequence_output, hidden)
-        # self.BiLSTM2.flatten_parameters()
-
-        # B = input_ids.shape[0]
 
         # temp_seq = sequence_output.view(B, -1)
 
         dir1 = hidden[0][0, :, :].squeeze()
         dir2 = hidden[0][1, :, :].squeeze()
-        # print('dir1 shape: ', dir1.shape, ', dir2 shape: ', dir2.shape)
         last_hidden = torch.cat((dir1, dir2), dim=-1)
         # (B, T, H)
 
