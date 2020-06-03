@@ -40,15 +40,33 @@ More english training data did not increase the scores on english dev and test
 sets. However, the arabic training data did boost the performance on the arabic
 test set. 
 
+### Note
+We found the original arabic test dataset to be very small(~10 sentences) so we
+build and test with a subset(~20%) of arabic data from the extra training data
+we obtained from SRL dataset. We still give the performance of our model on the
+original arabic test data here just as a reference:
+
+|Metric|Without extra training|With extra training|
+|---|---|---|
+|Precision|54.5|63.2|
+|Recall|27.9|27.9|
+|F1|36.9|38.7|
+
+The scores only increased a little. We think the original arabic test set is
+too small and thus not representative.
+
 ## Predicate Classification
 In this task, we trained models to classify a predicate in a sentence into
 one of the 12 classes. If a sentence contains N predicates, we split
 it into N data points, each corresponding to a predicate of the sentence.
 Each data point consists of an input and a label, where the input is the sentence plus the
-location of the predicate word, and the label is one of the 12 classes.
+location of the predicate word, and the label is one of the 12 classes. Note
+that in tasks involving classification we will use the original arabic test
+data because there are no labels available for the extra arabic test data
+acquired from the SRL training data.
 
 
-### Model A: Predicate as Segment B
+### Predicate as Segment B
 In this model we did not use the location indicator of the predicate. The 
 architecture is similar to the one below:
 
@@ -84,13 +102,6 @@ Model performance:
 |Recall|66.6|65.2|50.0|
 |F1|64.0|62.7|43.4|
 
-####12-class classification accuracy for all three models:
-
-|Model|English Dev|English Test|Arabic Test|
-|---|---|---|---|
-|A|69.1|69.1|55.3|
-|B|69.6|xx.x|55.3|
-|C|xx.x|xx.x|xx.x|
 
 ## A Different Approach
 
@@ -101,7 +112,7 @@ sub-tasks. The first classifier classifies a sentence and a given predicate into
 one of **neutral**, **harmful** and **helpful** whereas the second classifier
 classifies the same input into one of **verbal**, **material**, **both** and 
 **unknown**. However, we did not observe any increase in accuracy score as the
-final combined accuracy was only 0.71.
+final combined accuracy and F1-score are no higher than the original model.
 
 
 ## Running the Code
