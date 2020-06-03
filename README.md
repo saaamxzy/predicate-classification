@@ -1,9 +1,9 @@
 # Predicate Detection and Classification
 
 This project uses BERT to construct models that can be used in event trigger 
-detection and classification. The BERT model used in these experiments is the
-bert-base-multilingual-cased version. The task is modeled as a pipeline of two 
-tasks: the detector and classifier.
+detection and classification. The task is modeled as a pipeline of two 
+tasks: the detector and classifier. We use uncased mBERT with the detection 
+task and cased mBERT for the classification task. 
 
 ## Predicate Detection
 The first task in this pipeline. The detector model takes in a sequence of words
@@ -102,8 +102,30 @@ Model performance:
 |Recall|66.6|65.2|50.0|
 |F1|64.0|62.7|43.4|
 
+### Combined Performance(Detection + Classification)
 
-## A Different Approach
+|Metric|English Dev|English Test|Arabic Test|
+|---|---|---|---|
+|Precision|61.1|60.4|38.3|
+|Recall|66.3|65.2|50.0|
+|F1|63.6|62.7|43.4|
+
+## Tuning the Classification Model
+
+We observed that the detector had a fair performance but the classifier is
+performing poorly. So we experimented in several ways to see if we could
+boost its scores.
+
+The model had a training score of nearly 100, which could be an indicator of
+overfitting. We tried a number of approaches to decrease the influence of 
+overfitting, including decreasing the hidden size of the MLP at the end, or
+even removing the hidden layer of the MLP. We also tried adding a dropout
+layer to the MLP, but none of those helped the classification scores. Then
+we tried to decrease the hidden size of the BiLSTM layer, from 768 to 384,
+and finally to 32, 16 or 8. We did not observe any improvement. We also
+built another model, who has a Transformer layer with attention on top of
+BERT, and it did not outperform the original one. Also, freezing the BERT
+layers during training process did not help.
 
 We also tried further break down the classification task into two classification
 tasks: one with three classes and another with four classes. The final 
@@ -113,6 +135,3 @@ one of **neutral**, **harmful** and **helpful** whereas the second classifier
 classifies the same input into one of **verbal**, **material**, **both** and 
 **unknown**. However, we did not observe any increase in accuracy score as the
 final combined accuracy and F1-score are no higher than the original model.
-
-
-## Running the Code

@@ -32,6 +32,7 @@ import random
 from tqdm import tqdm, trange
 from sklearn import metrics
 import process_data
+import math
 
 import numpy as np
 import torch
@@ -121,7 +122,7 @@ def get_labels_from_file(path):
 def read_examples_from_file(data_dir, mode=None, has_label=True):
 
     file_path = os.path.join(data_dir, "{}.txt".format(mode))
-
+    print('file_path: ', file_path)
     guid_index = 1
     examples = []
     with open(file_path, encoding="utf-8") as f:
@@ -286,10 +287,14 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
     features = []
     for (ex_index, example) in enumerate(examples):
         predicate_vector = example.predicate_vector
-        all_predicate_vectors = example.all_predicate_vectors
+        if example.all_predicate_vectors is not None:
+            all_predicate_vectors = example.all_predicate_vectors
+        else:
+            all_predicate_vectors = None
         text_a_ls = example.text_a.split(' ')
         assert len(predicate_vector) == len(text_a_ls), 'length of predicate vector is not the same as length of text_a'
-        assert len(all_predicate_vectors) == len(text_a_ls), 'length of all pred vector wrong.'
+        if all_predicate_vectors is not None:
+            assert len(all_predicate_vectors) == len(text_a_ls), 'length of all pred vector wrong.'
 
         predicate_vector_tokenized = []
         all_predicate_vectors_tokenized = []
@@ -300,10 +305,11 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
                 predicate_vector_tokenized.extend([1] * len(word_token))
             else:
                 predicate_vector_tokenized.extend([0] * len(word_token))
-            if all_predicate_vectors[i] == 1:
-                all_predicate_vectors_tokenized.extend([1] * len(word_token))
-            else:
-                all_predicate_vectors_tokenized.extend([0] * len(word_token))
+            if all_predicate_vectors is not None:
+                if all_predicate_vectors[i] == 1:
+                    all_predicate_vectors_tokenized.extend([1] * len(word_token))
+                else:
+                    all_predicate_vectors_tokenized.extend([0] * len(word_token))
             tokens_temp.extend(word_token)
 
         # tokenize the whole sentence
@@ -347,13 +353,15 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         tokens = ["[CLS]"] + tokens_a + ["[SEP]"]
         segment_ids = [0] * len(tokens)
         predicate_vector_tokenized = [0] + predicate_vector_tokenized + [0]
-        all_predicate_vectors_tokenized = [0] + all_predicate_vectors_tokenized + [0]
+        if all_predicate_vectors is not None:
+            all_predicate_vectors_tokenized = [0] + all_predicate_vectors_tokenized + [0]
 
         if tokens_b:
             tokens += tokens_b + ["[SEP]"]
             segment_ids += [1] * (len(tokens_b) + 1)
             predicate_vector_tokenized.extend([0] * (len(tokens_b) + 1))
-            all_predicate_vectors_tokenized.extend([0] * (len(tokens_b) + 1))
+            if all_predicate_vectors is not None:
+                all_predicate_vectors_tokenized.extend([0] * (len(tokens_b) + 1))
 
         # print('tokens_a: ', tokens_a)
         # print('tokens_b: ', tokens_b)
@@ -365,7 +373,8 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
 
         # pad the predicate vector to match the length of input_ids
         predicate_vector_tokenized += [0] * (len(input_ids) - len(predicate_vector_tokenized))
-        all_predicate_vectors_tokenized += [0] * (len(input_ids) - len(all_predicate_vectors_tokenized))
+        if all_predicate_vectors is not None:
+            all_predicate_vectors_tokenized += [0] * (len(input_ids) - len(all_predicate_vectors_tokenized))
 
         # Zero-pad up to the sequence length.
         padding = [0] * (max_seq_length - len(input_ids))
@@ -373,15 +382,17 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         input_mask += padding
         segment_ids += padding
         predicate_vector_tokenized += padding
-        all_predicate_vectors_tokenized += padding
+        if all_predicate_vectors is not None:
+            all_predicate_vectors_tokenized += padding
 
         assert len(input_ids) == max_seq_length
         assert len(input_mask) == max_seq_length
         assert len(segment_ids) == max_seq_length
         assert len(predicate_vector_tokenized) == max_seq_length, "left: %s\tright: %s" % \
                                                                   (len(predicate_vector_tokenized), max_seq_length)
-        assert len(all_predicate_vectors_tokenized) == max_seq_length, "left: %s\tright: %s" % \
-                                                                (len(all_predicate_vectors_tokenized), max_seq_length)
+        if all_predicate_vectors is not None:
+            assert len(all_predicate_vectors_tokenized) == max_seq_length, "left: %s\tright: %s" % \
+                                                                    (len(all_predicate_vectors_tokenized), max_seq_length)
 
         # if predicate_vector_tokenized.count(1) > 1:
         #     print('tokens:', tokens)
@@ -402,8 +413,10 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
                 "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
             if example.label is not None:
                 logger.info("label: %s (id = %d)" % (example.label, label_id))
-            logger.info("predicate vector: %s" % " ".join([str(x) for x in predicate_vector_tokenized]))
 
+            logger.info("predicate vector: %s" % " ".join([str(x) for x in predicate_vector_tokenized]))
+        if all_predicate_vectors is not None:
+            all_predicate_vectors_tokenized = None
         features.append(
             InputFeatures(input_ids=input_ids,
                           input_mask=input_mask,
@@ -623,8 +636,10 @@ def main():
             train_examples = processor.get_train_examples(args.data_dir)
             print('number of examples: ', len(train_examples))
             train_examples = train_examples[:int(len(train_examples) * args.percent / 100)]
-            num_train_steps = int(
-                len(train_examples) / args.train_batch_size / args.gradient_accumulation_steps * args.num_train_epochs)
+            # num_train_steps = int(
+            #     len(train_examples) / args.train_batch_size / args.gradient_accumulation_steps * args.num_train_epochs)
+            num_train_steps = int(math.ceil(
+                len(train_examples) / args.train_batch_size) / args.gradient_accumulation_steps) * args.num_train_epochs
 
         # Prepare model
         model = bert_model.from_pretrained(args.bert_model,
@@ -662,6 +677,7 @@ def main():
             {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
         ]
         t_total = num_train_steps
+        logger.info("$$$$$$$$$$ t_total: " + str(t_total) + " $$$$$$$$$$")
         if args.local_rank != -1:
             t_total = t_total // torch.distributed.get_world_size()
         if args.fp16:
@@ -841,6 +857,7 @@ def main():
         model_to_save = model.module if hasattr(model, 'module') else model  # Only save the model it-self
         output_model_file = os.path.join(args.output_dir, "pytorch_model.bin")
         if args.do_train:
+            logger.info('****** saving model ******')
             torch.save(model_to_save.state_dict(), output_model_file)
 
         # Until here
@@ -935,7 +952,7 @@ def main():
 
 
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        eval_examples = processor.get_arab_test_examples(args.data_dir)
+        eval_examples = processor.get_dev_examples(args.data_dir)
         eval_features = convert_examples_to_features(
             eval_examples, label_list, args.max_seq_length, tokenizer)
         logger.info("***** Running evaluation *****")
@@ -1014,11 +1031,11 @@ def main():
         wrong_file = open(os.path.join(args.output_dir, 'wrong_predictions.txt'), 'w')
 
         for i, entry in enumerate(rs):
-            assert y_true_word[int(entry.guid.split('-')[-1])-1] == entry.label, \
-                '#%s# len(%d) is not equal to #%s# len(%d)' % (y_true_word[int(entry.guid.split('-')[-1])],
-                                                               len(y_true_word[int(entry.guid.split('-')[-1])]),
-                                                               entry.label,
-                                                               len(entry.label))
+            # assert y_true_word[int(entry.guid.split('-')[-1])-1] == entry.label, \
+            #     '#%s# len(%d) is not equal to #%s# len(%d)' % (y_true_word[int(entry.guid.split('-')[-1])],
+            #                                                    len(y_true_word[int(entry.guid.split('-')[-1])]),
+            #                                                    entry.label,
+            #                                                    len(entry.label))
             wrong_file.write(entry.get_debug_string())
             wrong_file.write('\tpredicted: %s' % (y_pred_word[i]))
             wrong_file.write('\n')

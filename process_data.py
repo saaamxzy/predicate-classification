@@ -180,6 +180,7 @@ def write_pc_data(mode: str, detector_out='tmp/detector_predictions.txt',
         n = len(example)
         for j in range(n):
             out_file.write(example[j] + ' ' + label[j] + '\n')
+        out_file.write('\n')
 
     out_file.close()
 
