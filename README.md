@@ -102,13 +102,13 @@ Model performance:
 |Recall|66.6|65.2|50.0|
 |F1|64.0|62.7|43.4|
 
-### Combined Performance(Detection + Classification)
+### Combined Performance on English (Detection + Classification)
 
-|Metric|English Dev|English Test|Arabic Test|
+|Metric|English Dev|English Test|
 |---|---|---|---|
-|Precision|61.1|60.4|38.3|
-|Recall|66.3|65.2|50.0|
-|F1|63.6|62.7|43.4|
+|Precision|61.1|59.3|
+|Recall|66.3|61.2|
+|F1|63.6|60.7|
 
 ## Tuning the Classification Model
 

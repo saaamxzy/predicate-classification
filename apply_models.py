@@ -1807,12 +1807,13 @@ class BertForPredicateClassification(PreTrainedBertModel):
 
 
         # Using LSTM
-        hidden = (torch.autograd.Variable(torch.zeros(2, bert_emb.size(0), self.LSTM.hidden_size)).cuda(),
-                  torch.autograd.Variable(torch.zeros(2, bert_emb.size(0), self.LSTM.hidden_size)).cuda())
+        hidden = (torch.autograd.Variable(torch.zeros(1, bert_emb.size(0), self.LSTM.hidden_size)).cuda(),
+                  torch.autograd.Variable(torch.zeros(1, bert_emb.size(0), self.LSTM.hidden_size)).cuda())
         self.LSTM.flatten_parameters()
         sequence_output, hidden = self.LSTM(sequence_output, hidden)
         sequence_output = sequence_output.contiguous()
         print(hidden)
+        print(hidden.shape)
         return
 
 
