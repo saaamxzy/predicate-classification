@@ -31,7 +31,11 @@ Detector + Classification BIO F1 score:
 |With Extra Training|56.7|57.0|
 
 The scores are decreased on the English data because of the extra training
-data on the detector. We did not have 12-class labels for the extra arabic data
+data on the detector. However, as the detector scored much higher with the
+ extra arabic training data it is likely that the final result for additional
+ arabic data will be improved. We did not evaluate on the original arabic
+ test data because the size of the dataset is too small(10 sentences) and not representative.
+ We did not have 12-class labels for the extra arabic data
 so we could only show the arabic classification scores once we obtain more
 labeled data on the arabic set. The classifier could not perform as well as
 the detector. Please see the Predicate Classification and Tuning the Classification
