@@ -5,6 +5,38 @@ detection and classification. The task is modeled as a pipeline of two
 tasks: the detector and classifier. We use uncased mBERT with the detection 
 task and cased mBERT for the classification task. 
 
+# Highlight
+
+Using the extra training data from the SRL task, we improved the detector
+scores on arabic data. As a result, the final classification score would
+also increase on arabic data. Note all performance score in this section
+are in F1 score.
+
+Detector performance:
+
+|Model|English Dev|English Test|Arabic Test|
+|---|---|---|---|
+|Without Extra Training|85.9|86.0|36.9|
+|With Extra Training|84.5|85.3|**84.0**|
+
+Original detector model without extra training data has a F1 score of 10.5 on
+the arabic test data we use, while the model trained with extra English and 
+arabic data has an F1 score of **84.0**.
+
+Detector + Classification BIO F1 score:
+
+|Model|English Dev|English Test|
+|---|---|---|
+|Without Extra Training|57.1|57.1|
+|With Extra Training|56.7|57.0|
+
+The scores are decreased on the English data because of the extra training
+data on the detector. We did not have 12-class labels for the extra arabic data
+so we could only show the arabic classification scores once we obtain more
+labeled data on the arabic set. The classifier could not perform as well as
+the detector. Please see the Predicate Classification and Tuning the Classification
+Model sections for possible reasons why the classifier was not doing good.
+
 ## Predicate Detection
 The first task in this pipeline. The detector model takes in a sequence of words
 and outputs a sequence tag for each words in the BIO format.
@@ -18,9 +50,9 @@ following table:
 
 |Metric|English Dev|English Test|Arabic Test|
 |---|---|---|---|
-|Precision|84.0|85.2|47.6|
-|Recall|88.0|86.9|5.9|
-|F1|85.9|86.0|10.5|
+|Precision|84.0|85.2|54.5|
+|Recall|88.0|86.9|27.9|
+|F1|85.9|86.0|36.9|
 
 
 ### Adding Extra Training Data
@@ -104,11 +136,7 @@ Model performance:
 
 ### Combined Performance on English (Detection + Classification)
 
-|Metric|English Dev|English Test|
-|---|---|---|---|
-|Precision|61.1|59.3|
-|Recall|66.3|61.2|
-|F1|63.6|60.7|
+See highlight section.
 
 ## Tuning the Classification Model
 

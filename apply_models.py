@@ -1735,7 +1735,6 @@ class BertForPredicateClassification(PreTrainedBertModel):
         self.num_labels = num_labels
         self.binary_emb_dim = 50
         self.bert = BertModel(config)
-        print('bert hidden size:', config.hidden_size)
 
         # use binary embedding
         self.binary_embeddings = nn.Embedding(2, self.binary_emb_dim)
@@ -1743,10 +1742,10 @@ class BertForPredicateClassification(PreTrainedBertModel):
         #                             hidden_size=8,
         #                             # hidden_size=32,
         #                             bidirectional=True, batch_first=True)
-        self.LSTM = nn.LSTM(input_size=config.hidden_size + self.binary_emb_dim,
+        self.BiLSTM = nn.LSTM(input_size=config.hidden_size + self.binary_emb_dim,
                               hidden_size=8,
                               # hidden_size=32,
-                              bidirectional=False, batch_first=True)
+                              bidirectional=True, batch_first=True)
 
         # self.BiLSTM2 = nn.LSTM(input_size=config.hidden_size,
         #                             hidden_size=config.hidden_size // 2,
@@ -1796,25 +1795,25 @@ class BertForPredicateClassification(PreTrainedBertModel):
         # (B, T, H_w + H_b)
 
         # Using BiLSTM
-        # hidden = (torch.autograd.Variable(torch.zeros(2, bert_emb.size(0), self.BiLSTM.hidden_size)).cuda(),
-        #           torch.autograd.Variable(torch.zeros(2, bert_emb.size(0), self.BiLSTM.hidden_size)).cuda())
-        # self.BiLSTM.flatten_parameters()
-        # sequence_output, hidden = self.BiLSTM(sequence_output, hidden)
-        # sequence_output = sequence_output.contiguous()
-        # dir1 = hidden[0][0, :, :].squeeze()
-        # dir2 = hidden[0][1, :, :].squeeze()
-        # last_hidden = torch.cat((dir1, dir2), dim=-1)
-
-
-        # Using LSTM
-        hidden = (torch.autograd.Variable(torch.zeros(1, bert_emb.size(0), self.LSTM.hidden_size)).cuda(),
-                  torch.autograd.Variable(torch.zeros(1, bert_emb.size(0), self.LSTM.hidden_size)).cuda())
-        self.LSTM.flatten_parameters()
-        sequence_output, hidden = self.LSTM(sequence_output, hidden)
+        hidden = (torch.autograd.Variable(torch.zeros(2, bert_emb.size(0), self.BiLSTM.hidden_size)).cuda(),
+                  torch.autograd.Variable(torch.zeros(2, bert_emb.size(0), self.BiLSTM.hidden_size)).cuda())
+        self.BiLSTM.flatten_parameters()
+        sequence_output, hidden = self.BiLSTM(sequence_output, hidden)
         sequence_output = sequence_output.contiguous()
-        print(hidden)
-        print(hidden.shape)
-        return
+        dir1 = hidden[0][0, :, :].squeeze()
+        dir2 = hidden[0][1, :, :].squeeze()
+        last_hidden = torch.cat((dir1, dir2), dim=-1)
+
+
+        # # Using LSTM
+        # hidden = (torch.autograd.Variable(torch.zeros(1, bert_emb.size(0), self.LSTM.hidden_size)).cuda(),
+        #           torch.autograd.Variable(torch.zeros(1, bert_emb.size(0), self.LSTM.hidden_size)).cuda())
+        # self.LSTM.flatten_parameters()
+        # sequence_output, hidden = self.LSTM(sequence_output, hidden)
+        # sequence_output = sequence_output.contiguous()
+        # print(hidden)
+        # print(hidden[0].shape, hidden[1].shape)
+        # return
 
 
 
