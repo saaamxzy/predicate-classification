@@ -167,3 +167,33 @@ one of **neutral**, **harmful** and **helpful** whereas the second classifier
 classifies the same input into one of **verbal**, **material**, **both** and 
 **unknown**. However, we did not observe any increase in accuracy score as the
 final combined accuracy and F1-score are no higher than the original model.
+
+# How to run the code
+
+## Detector
+
+To train a detector model, run run_detector.sh file.
+
+To get the prediction file from detector, run run_detector_eval.sh. Note the
+TEST_FILE macro refers to the file you want to generate predictions under
+the data_dir. The file name should be in .txt format and set the macro to
+the name of the file without the .txt extension.
+
+## Classifier
+
+To train a classifier model, run the run_classifier.sh file.
+
+To get the prediction file from classifier, run run_classifier_pred.sh.
+The detector_prediction_file is the path to the detector output. output_dir
+is the path to the directory where the trained model is stored.
+
+## Evaluate the final result with Seqeval
+
+Run the evaluate.sh file. The two arguments refer to the true answer file
+and the prediction file in the same format.
+
+## Pretrained models
+
+You can download the pretrained detector model and classifier model
+[here](https://drive.google.com/file/d/1YrrqTaPjMu3v_wKxL9LqJlrt9ghcShFz/view?usp=sharing).
+Down load and unzip them then change the path to these models in the scripts.
